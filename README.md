@@ -1,4 +1,4 @@
-# Recipe Chef AI 🍳
+# Recipe Chat🍳
 
 An intelligent chatbot that extracts recipes from YouTube cooking videos and provides interactive cooking assistance using AI. Transform any cooking video into a structured recipe with real-time guidance.
 
