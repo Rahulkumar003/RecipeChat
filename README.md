@@ -34,8 +34,7 @@ An intelligent chatbot that extracts recipes from YouTube cooking videos and pro
 ## 📂 Project Structure
 
 ```
-recipe-chef-ai/
-├── frontend/
+//frontend
 │   ├── src/
 │   │   ├── components/           # React components
 │   │   │   ├── ChatMessage.js    # Individual message component
@@ -69,9 +68,7 @@ recipe-chef-ai/
 ### Frontend Setup
 
 ```bash
-# Navigate to frontend directory
-cd frontend
-
+# Navigate to frontend directory (src directory)
 # Install dependencies
 npm install
 
