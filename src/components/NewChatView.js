@@ -9,7 +9,6 @@ const socket = io(process.env.REACT_APP_SOCKET_URL, {
   transports: ['websocket', 'polling'],
 });
 
-
 const NewChatView = () => {
   const messagesEndRef = useRef();
   const inputRef = useRef();
@@ -60,6 +59,7 @@ const NewChatView = () => {
         setIsStreaming(false);
         setIsLoading(false);
         setCurrentAIMessageId(null);
+        setIsFetchingRecipe(false);
       } else if (data.streaming) {
         // Debugging: Log the incoming data
         console.log('Streaming data received:', data.data);
@@ -273,7 +273,13 @@ const NewChatView = () => {
             value={formValue}
             onKeyDown={handleKeyDown}
             onChange={handleChange}
-            placeholder={isFetchingRecipe ? 'Enter YouTube video URL' : 'Ask a question'}
+            placeholder={
+              isStreaming
+                ? 'Answer is being generated...'
+                : isFetchingRecipe
+                ? 'Enter YouTube video URL'
+                : 'Ask a question'
+            }
             disabled={isStreaming}
           />
           <button
