@@ -17,7 +17,6 @@ const NewChatView = () => {
   const [isFetchingRecipe, setIsFetchingRecipe] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
 
   // Add initial welcome message on component mount (only once)
@@ -29,17 +28,19 @@ const NewChatView = () => {
       ai: true,
     };
 
-    // Only add welcome message if no messages exist
     addMessage((prevMessages) => (prevMessages.length === 0 ? [welcomeMessage] : prevMessages));
-  }, []);
+  }, [addMessage]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   // Enhanced socket event listener
   useEffect(() => {
-    socket.on('response', (data) => {
+    const handleResponse = (data) => {
       if (data.error) {
         console.error('Socket error:', data.error);
 
-        // Remove loading message
         if (loadingMessage) {
           addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
         }
@@ -51,30 +52,19 @@ const NewChatView = () => {
           ai: true,
         });
         setIsStreaming(false);
-        setIsLoading(false);
         setCurrentAIMessageId(null);
         setLoadingMessage('');
       } else if (data.complete) {
-        console.log('Text generation complete');
         setIsStreaming(false);
-        setIsLoading(false);
         setCurrentAIMessageId(null);
         setIsFetchingRecipe(false);
       } else if (data.streaming) {
-        // Debugging: Log the incoming data
-        console.log('Streaming data received:', data.data);
-
-        // Remove loading message
         if (loadingMessage) {
           addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
           setLoadingMessage('');
         }
 
-        // Remove loading state when first data arrives
-        setIsLoading(false);
-
         addMessage((prevMessages) => {
-          // If no current AI message ID, create a new message
           if (!currentAIMessageId) {
             const newMessageId = `msg_stream_${Date.now()}`;
             setCurrentAIMessageId(newMessageId);
@@ -90,7 +80,6 @@ const NewChatView = () => {
             ];
           }
 
-          // Update existing streaming message
           return prevMessages.map((msg) =>
             msg.id === currentAIMessageId
               ? {
@@ -102,23 +91,18 @@ const NewChatView = () => {
         });
         scrollToBottom();
       }
-    });
-
-    return () => {
-      socket.off('response');
     };
-  }, [currentAIMessageId, loadingMessage]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+    socket.on('response', handleResponse);
+    return () => socket.off('response', handleResponse);
+  }, [currentAIMessageId, loadingMessage, addMessage]);
+
+  // Recipe stream listener
   useEffect(() => {
-    // Socket listener for recipe streaming
-    socket.on('recipe_stream', (data) => {
+    const handleRecipeStream = (data) => {
       if (data.error) {
         console.error('Recipe fetch error:', data.error);
 
-        // Remove loading message
         if (loadingMessage) {
           addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
         }
@@ -130,27 +114,19 @@ const NewChatView = () => {
           ai: true,
         });
         setIsStreaming(false);
-        setIsLoading(false);
         setCurrentAIMessageId(null);
         setLoadingMessage('');
       } else if (data.complete) {
-        console.log('Recipe fetch complete');
         setIsStreaming(false);
         setIsFetchingRecipe(false);
-        setIsLoading(false);
         setCurrentAIMessageId(null);
       } else if (data.streaming) {
-        // Remove loading message
         if (loadingMessage) {
           addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
           setLoadingMessage('');
         }
 
-        // Remove loading state when first data arrives
-        setIsLoading(false);
-
         addMessage((prevMessages) => {
-          // If no current AI message ID, create a new message
           if (!currentAIMessageId) {
             const newMessageId = `msg_recipe_${Date.now()}`;
             setCurrentAIMessageId(newMessageId);
@@ -166,7 +142,6 @@ const NewChatView = () => {
             ];
           }
 
-          // Update existing streaming message
           return prevMessages.map((msg) =>
             msg.id === currentAIMessageId
               ? {
@@ -178,12 +153,11 @@ const NewChatView = () => {
         });
         scrollToBottom();
       }
-    });
-
-    return () => {
-      socket.off('recipe_stream');
     };
-  }, [currentAIMessageId, loadingMessage]);
+
+    socket.on('recipe_stream', handleRecipeStream);
+    return () => socket.off('recipe_stream', handleRecipeStream);
+  }, [currentAIMessageId, loadingMessage, addMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -192,7 +166,6 @@ const NewChatView = () => {
     const cleanInput = formValue.trim();
     setFormValue('');
 
-    // Add user message
     addMessage({
       id: `msg_user_${Date.now()}`,
       createdAt: Date.now(),
@@ -200,15 +173,10 @@ const NewChatView = () => {
       ai: false,
     });
 
-    // Set loading state and loading message
-    setIsLoading(true);
     setIsStreaming(true);
-
-    // Set different loading messages based on context
     const loadingText = isFetchingRecipe ? 'Fetching recipe details...' : 'Generating response...';
-
-    // Add a loading message
     const loadingMessageId = `msg_loading_${Date.now()}`;
+    
     addMessage({
       id: loadingMessageId,
       createdAt: Date.now(),
@@ -219,7 +187,6 @@ const NewChatView = () => {
     setLoadingMessage(loadingMessageId);
 
     if (isFetchingRecipe) {
-      // Start streaming recipe fetch
       socket.emit('fetch_recipe_stream', { video_url: cleanInput });
     } else {
       socket.emit('generate_text', { prompt: cleanInput });
@@ -232,8 +199,6 @@ const NewChatView = () => {
       if (!isStreaming) handleSubmit(e);
     }
   };
-
-  const handleChange = (e) => setFormValue(e.target.value);
 
   useEffect(() => {
     scrollToBottom();
@@ -259,20 +224,11 @@ const NewChatView = () => {
         <div className="flex items-stretch bg-gray-50 dark:bg-gray-700 rounded-xl overflow-hidden">
           <textarea
             ref={inputRef}
-            className="
-              w-full 
-              p-3 
-              bg-transparent 
-              text-gray-800 
-              dark:text-gray-200 
-              outline-none 
-              resize-none 
-              max-h-32
-            "
+            className="w-full p-3 bg-transparent text-gray-800 dark:text-gray-200 outline-none resize-none max-h-32"
             rows={1}
             value={formValue}
             onKeyDown={handleKeyDown}
-            onChange={handleChange}
+            onChange={(e) => setFormValue(e.target.value)}
             placeholder={
               isStreaming
                 ? 'Answer is being generated...'
@@ -284,15 +240,11 @@ const NewChatView = () => {
           />
           <button
             type="submit"
-            className={`
-              p-3 
-              ${
-                formValue && !isStreaming
-                  ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
-                  : 'text-gray-400'
-              }
-              transition-colors
-            `}
+            className={`p-3 ${
+              formValue && !isStreaming
+                ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
+                : 'text-gray-400'
+            } transition-colors`}
             disabled={!formValue || isStreaming}
           >
             <MdSend size={24} />
