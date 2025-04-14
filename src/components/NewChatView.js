@@ -5,7 +5,7 @@ import { MdSend } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 //socket connection :
-const socket = io('https://your-backend-domain.com', {
+const socket = io(URL, {
   transports: ['websocket', 'polling'],
 });
 
