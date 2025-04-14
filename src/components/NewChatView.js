@@ -3,11 +3,12 @@ import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
 import { MdSend } from 'react-icons/md';
 import { io } from 'socket.io-client';
-// http://192.168.3.31:3000
-// Ensure socket connection with specific options
-const socket = io('http://192.168.3.31:5000', {
+
+//socket connection :
+const socket = io('https://your-backend-domain.com', {
   transports: ['websocket', 'polling'],
 });
+
 
 const NewChatView = () => {
   const messagesEndRef = useRef();
