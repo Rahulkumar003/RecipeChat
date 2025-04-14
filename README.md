@@ -1,70 +1,142 @@
-# Getting Started with Create React App
+# Recipe Chef AI 🍳
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+An intelligent chatbot that extracts recipes from YouTube cooking videos and provides interactive cooking assistance using AI. Transform any cooking video into a structured recipe with real-time guidance.
 
-## Available Scripts
+## ✨ Features
 
-In the project directory, you can run:
+- **Video to Recipe**: Extract complete recipes from any YouTube cooking video
+- **AI Cooking Assistant**: Get help with techniques, substitutions, and modifications
+- **Interactive Guidance**: Step-by-step cooking instructions with voice support
+- **Smart Kitchen Knowledge**:
+  - Nutritional information
+  - Ingredient substitutions
+  - Technique explanations
+  - Storage recommendations
+  - Food safety tips
+  - Cultural context
+  - Flavor variations
+  - Dietary adaptations
 
-### `npm start`
+## 🧰 Tech Stack
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Frontend
+- React 18
+- TailwindCSS & DaisyUI
+- Socket.IO Client
+- React Markdown
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Backend
+- Flask
+- Flask-SocketIO
+- LLAMA AI (via Ollama)
+- YouTube Data Processing (youtube-transcript-api, yt-dlp)
 
-### `npm test`
+## 📂 Project Structure
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```
+recipe-chef-ai/
+├── frontend/
+│   ├── src/
+│   │   ├── components/           # React components
+│   │   │   ├── ChatMessage.js    # Individual message component
+│   │   │   ├── Modal.js          # Modal dialog component  
+│   │   │   ├── NewChatView.js    # Main chat interface
+│   │   │   ├── SideBar.js        # Navigation sidebar
+│   │   │   └── Setting.js        # Settings component
+│   │   ├── context/
+│   │   │   └── chatContext.js    # Chat state management
+│   │   ├── hooks/                # Custom React hooks
+│   │   ├── assets/               # Images and static files
+│   │   └── App.js               # Root component
+│   └── package.json
+│
+├── backend/
+│   ├── app.py                    # Flask server + Socket.IO setup
+│   ├── recipe_chatbot.py         # Core chatbot logic
+│   └── requirements.txt          # Python dependencies
+│
+└── README.md
+```
 
-### `npm run build`
+## 🚀 Getting Started
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Prerequisites
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- Node.js (v14+)
+- Python 3.8+
+- Ollama with LLAMA model installed
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Frontend Setup
 
-### `npm run eject`
+```bash
+# Navigate to frontend directory
+cd frontend
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+# Install dependencies
+npm install
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# Create environment file from example
+cp .env.example .env
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+# Start development server
+npm start
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Backend Setup
 
-## Learn More
+```bash
+# Navigate to backend directory
+cd backend
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+# Install requirements
+pip install -r requirements.txt
 
-### Code Splitting
+# Start Flask server
+python app.py
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Your app will be available at:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:5000
 
-### Analyzing the Bundle Size
+## 🔄 How It Works
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+1. **Video Submission**:
+   - User enters YouTube URL of cooking video
+   - Backend fetches video metadata and transcripts
 
-### Making a Progressive Web App
+2. **Recipe Extraction**:
+   - AI processes transcript to identify ingredients, quantities, and steps
+   - Structured recipe is generated and streamed back to frontend
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+3. **Interactive Assistance**:
+   - User can ask questions about the recipe
+   - AI analyzes question context and provides tailored responses
+   - Cooking steps are presented in an interactive format
 
-### Advanced Configuration
+4. **Knowledge Enhancement**:
+   - AI enriches recipes with additional context
+   - Provides modifications based on dietary preferences
+   - Suggests alternative techniques or equipment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 💬 Socket Events
 
-### Deployment
+| Event Name | Direction | Purpose |
+|------------|-----------|---------|
+| `fetch_recipe_stream` | Client → Server | Request recipe extraction from URL |
+| `generate_text` | Client → Server | Send user questions to AI |
+| `recipe_stream` | Server → Client | Stream extracted recipe data |
+| `response` | Server → Client | Return AI assistant responses |
+| `processing_status` | Server → Client | Update extraction progress |
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
 
-### `npm run build` fails to minify
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## 🙏 Acknowledgements
+
+- [Ollama](https://ollama.ai/) for local LLAMA model hosting
+- [YouTube Data API](https://developers.google.com/youtube/v3) for video metadata
+- All the amazing chefs who share their recipes on YouTube!
