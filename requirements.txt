@@ -7,3 +7,4 @@ pytube==12.1.0
 youtube-transcript-api
 langchain-community==0.0.1  # Replace with the actual version if known
 asyncio==3.4.3  # Ensure asyncio is available for async operations
+yt_dlp==2025.3.31  
