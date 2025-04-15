@@ -9,6 +9,15 @@ const socket = io(process.env.REACT_APP_SOCKET_URL, {
   transports: ['websocket', 'polling'],
 });
 
+// Add after socket initialization
+socket.on('connect', () => {
+  console.log('Connected to backend');
+});
+
+socket.on('connect_error', (error) => {
+  console.error('Connection error:', error);
+});
+
 const NewChatView = () => {
   const messagesEndRef = useRef();
   const inputRef = useRef();
@@ -38,6 +47,8 @@ const NewChatView = () => {
   // Enhanced socket event listener
   useEffect(() => {
     const handleResponse = (data) => {
+      console.log('Received response:', data);
+
       if (data.error) {
         console.error('Socket error:', data.error);
 
@@ -100,6 +111,8 @@ const NewChatView = () => {
   // Recipe stream listener
   useEffect(() => {
     const handleRecipeStream = (data) => {
+      console.log('Received recipe chunk:', data);
+
       if (data.error) {
         console.error('Recipe fetch error:', data.error);
 
