@@ -7,7 +7,7 @@ from recipe_chatbot import RecipeChatBot
 app = Flask(__name__)
 
 # Allow CORS for localhost and network IP
-allowed_origins = ["http://192.168.56.1:3000"]
+allowed_origins = ["https://recipe-chat-backend-532248491422.us-central1.run.app"]
 CORS(app, supports_credentials=True, origins=allowed_origins)
 
 # Configure SocketIO for both addresses
