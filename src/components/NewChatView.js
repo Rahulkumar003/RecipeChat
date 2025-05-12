@@ -51,7 +51,7 @@ const NewChatView = () => {
     if (inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isStreaming, clearMessages, setFormValue, setIsFetchingRecipe, setIsStreaming, setCurrentAIMessageId, setLoadingMessage, inputRef]);
+  }, [isStreaming, setFormValue, setIsFetchingRecipe, setIsStreaming, setCurrentAIMessageId, setLoadingMessage, clearMessages, inputRef]);
   // Update the initialization useEffect
   useEffect(() => {
     resetChat(); // Use the same resetChat function for initialization
