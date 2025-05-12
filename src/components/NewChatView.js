@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
 import { MdSend, MdStop } from 'react-icons/md';
@@ -27,8 +27,7 @@ const NewChatView = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
-
-  const resetChat = () => {
+  const resetChat = useCallback(() => {
     // Stop any ongoing generation
     if (isStreaming) {
       socket.emit('stop_generation');
@@ -52,7 +51,7 @@ const NewChatView = () => {
     if (inputRef.current) {
       inputRef.current.focus();
     }
-  };
+  }, [isStreaming, clearMessages, setFormValue, setIsFetchingRecipe, setIsStreaming, setCurrentAIMessageId, setLoadingMessage, inputRef]);
   // Update the initialization useEffect
   useEffect(() => {
     resetChat(); // Use the same resetChat function for initialization
