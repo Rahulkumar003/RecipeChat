@@ -53,14 +53,13 @@ const NewChatView = () => {
       inputRef.current.focus();
     }
   };
-
   // Update the initialization useEffect
   useEffect(() => {
     resetChat(); // Use the same resetChat function for initialization
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [resetChat]);
 
   // Update the useEffect for storage event listener
   useEffect(() => {
@@ -71,7 +70,7 @@ const NewChatView = () => {
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [resetChat]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
