@@ -4,6 +4,7 @@ import { ChatContext } from '../context/chatContext';
 import logo from '../assets/logo.png';
 import Modal from './Modal';
 import Setting from './Setting';
+import { io } from 'socket.io-client';
 
 const SideBar = () => {
   const [open, setOpen] = useState(true);
@@ -20,7 +21,30 @@ const SideBar = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const clearChat = () => clearMessages();
+  const clearChat = () => {
+    // Connect to socket
+    const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://127.0.0.1:5000');
+    
+    // Stop any ongoing generation
+    socket.emit('stop_generation');
+    
+    // Clear messages in chat context
+    clearMessages();
+    
+    // Trigger storage event to notify NewChatView
+    window.localStorage.setItem('clearChat', Date.now().toString());
+    
+    // Dispatch storage event manually for same window
+    window.dispatchEvent(new Event('storage'));
+    
+    // Close socket connection
+    socket.disconnect();
+    
+    // Close the sidebar on mobile after clicking New Chat
+    if (window.innerWidth <= 720) {
+      setOpen(false);
+    }
+  };
 
   return (
     <aside
@@ -44,9 +68,7 @@ const SideBar = () => {
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <div
-          className={`flex items-center transition-all ${!open ? 'opacity-0 w-0' : 'opacity-100'}`}
-        >
+        <div className={`flex items-center transition-all ${!open ? 'opacity-0 w-0' : 'opacity-100'}`}>
           <img src={logo} alt="RecipeHelper Logo" className="w-9 h-9 mr-2 rounded-full" />
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">ChatRecipe</h1>
         </div>
@@ -65,9 +87,10 @@ const SideBar = () => {
 
       {/* New Chat Button */}
       <div className="p-2 mt-4">
-        <div
+        <button
           onClick={clearChat}
           className={`
+            w-full
             border 
             border-gray-200 
             dark:border-gray-700 
@@ -87,17 +110,17 @@ const SideBar = () => {
           </div>
           <span
             className={`
-            text-gray-800 
-            dark:text-gray-200 
-            ${!open && 'hidden'}
-            group-hover:text-blue-600 
-            dark:group-hover:text-blue-300 
-            transition-colors
-          `}
+              text-gray-800 
+              dark:text-gray-200 
+              ${!open && 'hidden'}
+              group-hover:text-blue-600 
+              dark:group-hover:text-blue-300 
+              transition-colors
+            `}
           >
             New Chat
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Settings */}
@@ -120,13 +143,13 @@ const SideBar = () => {
             </div>
             <span
               className={`
-              text-gray-800 
-              dark:text-gray-200 
-              ${!open && 'hidden'}
-              group-hover:text-blue-600 
-              dark:group-hover:text-blue-300 
-              transition-colors
-            `}
+                text-gray-800 
+                dark:text-gray-200 
+                ${!open && 'hidden'}
+                group-hover:text-blue-600 
+                dark:group-hover:text-blue-300 
+                transition-colors
+              `}
             >
               Settings
             </span>
