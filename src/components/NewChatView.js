@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
-import { MdSend } from 'react-icons/md';
+import { MdSend, MdStop } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 //socket connection :
@@ -22,23 +22,56 @@ const NewChatView = () => {
   const messagesEndRef = useRef();
   const inputRef = useRef();
   const [formValue, setFormValue] = useState('');
-  const [messages, addMessage] = useContext(ChatContext);
+  const [messages, addMessage, clearMessages] = useContext(ChatContext); // Add clearMessages here
   const [isFetchingRecipe, setIsFetchingRecipe] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
 
-  // Add initial welcome message on component mount (only once)
-  useEffect(() => {
-    const welcomeMessage = {
-      id: `msg_welcome_${Date.now()}`,
-      createdAt: Date.now(),
-      text: "👋 Welcome to ChatRecipe! Share a YouTube cooking video link, and I'll break down the recipe for you.",
-      ai: true,
-    };
+  const resetChat = () => {
+    // Stop any ongoing generation
+    if (isStreaming) {
+      socket.emit('stop_generation');
+    }
+    
+    // Reset all states
+    setFormValue('');
+    setIsFetchingRecipe(true); // Important: Always set to true for new chat
+    setIsStreaming(false);
+    setCurrentAIMessageId(null);
+    setLoadingMessage('');
+    
+    // Disconnect and reconnect socket
+    socket.disconnect();
+    socket.connect();
 
-    addMessage((prevMessages) => (prevMessages.length === 0 ? [welcomeMessage] : prevMessages));
-  }, [addMessage]);
+    // Clear messages - This will add the initial welcome message from ChatContext
+    clearMessages();
+
+    // Focus the input field
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  // Update the initialization useEffect
+  useEffect(() => {
+    resetChat(); // Use the same resetChat function for initialization
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  // Update the useEffect for storage event listener
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'clearChat') {
+        resetChat();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -117,18 +150,27 @@ const NewChatView = () => {
         console.error('Recipe fetch error:', data.error);
 
         if (loadingMessage) {
-          addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
+          addMessage((prevMessages) => 
+            prevMessages.filter((msg) => msg.id !== loadingMessage)
+          );
         }
+
+        // More user-friendly error message
+        const errorMessage = data.error.includes('Working outside of request context') 
+          ? "Sorry, there was an error connecting to the server. Please try again."
+          : `Error fetching recipe: ${data.error}`;
 
         addMessage({
           id: `msg_error_${Date.now()}`,
           createdAt: Date.now(),
-          text: `Error fetching recipe: ${data.error}`,
+          text: errorMessage,
           ai: true,
         });
+        
         setIsStreaming(false);
         setCurrentAIMessageId(null);
         setLoadingMessage('');
+        setIsFetchingRecipe(true); // Reset to allow trying again
       } else if (data.complete) {
         setIsStreaming(false);
         setIsFetchingRecipe(false);
@@ -213,6 +255,16 @@ const NewChatView = () => {
     }
   };
 
+  const stopGeneration = () => {
+    socket.emit('stop_generation');
+    setIsStreaming(false);
+    setCurrentAIMessageId(null);
+    if (loadingMessage) {
+      addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
+      setLoadingMessage('');
+    }
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -251,17 +303,28 @@ const NewChatView = () => {
             }
             disabled={isStreaming}
           />
-          <button
-            type="submit"
-            className={`p-3 ${
-              formValue && !isStreaming
-                ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
-                : 'text-gray-400'
-            } transition-colors`}
-            disabled={!formValue || isStreaming}
-          >
-            <MdSend size={24} />
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={stopGeneration}
+              className="p-3 text-red-600 hover:bg-red-50 dark:hover:bg-red-900 transition-colors"
+              title="Stop generating"
+            >
+              <MdStop size={24} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className={`p-3 ${
+                formValue
+                  ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
+                  : 'text-gray-400'
+              } transition-colors`}
+              disabled={!formValue}
+            >
+              <MdSend size={24} />
+            </button>
+          )}
         </div>
       </form>
     </div>
