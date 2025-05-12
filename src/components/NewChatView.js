@@ -22,11 +22,13 @@ const NewChatView = () => {
   const messagesEndRef = useRef();
   const inputRef = useRef();
   const [formValue, setFormValue] = useState('');
-  const [messages, addMessage, clearMessages] = useContext(ChatContext); // Add clearMessages here
+  const [messages, addMessage, clearMessages] = useContext(ChatContext);
   const [isFetchingRecipe, setIsFetchingRecipe] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
+
   const resetChat = useCallback(() => {
     // Stop any ongoing generation
     if (isStreaming) {
@@ -51,14 +53,24 @@ const NewChatView = () => {
     if (inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isStreaming, setFormValue, setIsFetchingRecipe, setIsStreaming, setCurrentAIMessageId, setLoadingMessage, clearMessages, inputRef]);
-  // Update the initialization useEffect
+  }, [isStreaming, clearMessages]);
+
+  // Initialize chat only once when component mounts
   useEffect(() => {
-    resetChat(); // Use the same resetChat function for initialization
+    if (!isInitialized) {
+      clearMessages(); // Just clear messages instead of full reset
+      setIsInitialized(true);
+      
+      // Focus the input field
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }
+    
     return () => {
       socket.disconnect();
     };
-  }, [resetChat]);
+  }, [clearMessages, isInitialized]);
 
   // Update the useEffect for storage event listener
   useEffect(() => {
@@ -268,7 +280,9 @@ const NewChatView = () => {
   }, [messages]);
 
   useEffect(() => {
-    inputRef.current.focus();
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
   }, []);
 
   return (
