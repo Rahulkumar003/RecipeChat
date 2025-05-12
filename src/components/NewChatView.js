@@ -30,30 +30,33 @@ const NewChatView = () => {
   const [isInitialized, setIsInitialized] = useState(false);
 
   const resetChat = useCallback(() => {
-    // Stop any ongoing generation
-    if (isStreaming) {
-      socket.emit('stop_generation');
-    }
-    
-    // Reset all states
-    setFormValue('');
-    setIsFetchingRecipe(true); // Important: Always set to true for new chat
-    setIsStreaming(false);
-    setCurrentAIMessageId(null);
-    setLoadingMessage('');
-    
-    // Disconnect and reconnect socket
-    socket.disconnect();
-    socket.connect();
+  // Notify the backend about the reset
+  socket.emit('reset_chat', { reason: 'User reset the chat' });
 
-    // Clear messages - This will add the initial welcome message from ChatContext
-    clearMessages();
+  // Stop any ongoing generation
+  if (isStreaming) {
+    socket.emit('stop_generation', { reason: 'User reset the chat during streaming' });
+  }
 
-    // Focus the input field
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isStreaming, clearMessages]);
+  // Reset all states
+  setFormValue('');
+  setIsFetchingRecipe(true);
+  setIsStreaming(false);
+  setCurrentAIMessageId(null);
+  setLoadingMessage('');
+
+  // Disconnect and reconnect socket
+  socket.disconnect();
+  socket.connect();
+
+  // Clear messages
+  clearMessages();
+
+  // Focus the input field
+  if (inputRef.current) {
+    inputRef.current.focus();
+  }
+}, [isStreaming, clearMessages]);
 
   // Initialize chat only once when component mounts
   useEffect(() => {
