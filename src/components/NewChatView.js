@@ -5,8 +5,8 @@ import { MdSend } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 //socket connection :
-const socket = io('https://backend-released-recipechat.onrender.com', {
-// const socket = io('https://recipe-chat-backend-532248491422.us-central1.run.app', {
+// const socket = io('https://backend-released-recipechat.onrender.com', {
+const socket = io('https://recipe-chat-backend-532248491422.us-central1.run.app', {
 
   transports: ['websocket', 'polling'],
 });
