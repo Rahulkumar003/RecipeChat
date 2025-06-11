@@ -68,12 +68,11 @@ An intelligent chatbot that extracts recipes from YouTube cooking videos and pro
 ### Frontend Setup
 
 ```bash
-# Navigate to frontend directory (src directory)
+# Navigate to frontend directory (RecipeChat)
 # Install dependencies
 npm install
 
-# Create environment file from example
-cp .env.example .env
+# update backend url in  environment file (REACT_APP_BACKEND_URL) after running the backend 
 
 # Start development server
 npm start
@@ -85,15 +84,18 @@ npm start
 # Navigate to backend directory
 cd backend
 
-# Create and activate virtual environment
+# Create and activate virtual environment(optional)
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install requirements
 pip install -r requirements.txt
 
+update the env with frontend url( ALLOWED_ORIGINS=https://example.com,http://localhost:3000)
 # Start Flask server
 python app.py
+
+
 ```
 
 Your app will be available at:
