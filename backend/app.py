@@ -3,11 +3,17 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from recipe_chatbot import RecipeChatBot
+import os
+from dotenv import load_dotenv
+
+
+# Load environment variables
+load_dotenv()
+
+# Read CORS origins from environment
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
 
 app = Flask(__name__)
-
-# Allow CORS for localhost and network IP
-allowed_origins = ["https://recipe-chat-backend-532248491422.us-central1.run.app"]
 CORS(app, supports_credentials=True, origins=allowed_origins)
 
 # Configure SocketIO for both addresses
