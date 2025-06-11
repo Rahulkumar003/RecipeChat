@@ -72,7 +72,7 @@ An intelligent chatbot that extracts recipes from YouTube cooking videos and pro
 # Install dependencies
 npm install
 
-# update backend url in  environment file (REACT_APP_BACKEND_URL) after running the backend 
+# update backend url in  newchatview file(src/components) () after running the backend 
 
 # Start development server
 npm start
@@ -91,7 +91,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install requirements
 pip install -r requirements.txt
 
-update the env with frontend url( ALLOWED_ORIGINS=https://example.com,http://localhost:3000)
+update the url in app.py with frontend url( ALLOWED_ORIGINS=https://example.com,http://localhost:3000)
 # Start Flask server
 python app.py
 
