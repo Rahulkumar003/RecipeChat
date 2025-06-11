@@ -11,7 +11,7 @@ import { io } from 'socket.io-client';
 //   transports: ['websocket', 'polling'],
 // });
 
-const socket = io(process.env.REACT_APP_BACKEND_URL, {
+const socket = io('http://192.168.47.23:5000/', {
   transports: ['websocket', 'polling'],
 });
 

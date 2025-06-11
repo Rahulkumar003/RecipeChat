@@ -9,4 +9,4 @@ python-dotenv==1.0.1
 together==1.5.5
 gunicorn==21.2.0
 eventlet==0.33.3
-yt_dlp==2025.3.31  
+yt_dlp==2025.6.9
