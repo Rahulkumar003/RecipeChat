@@ -1,3 +1,13 @@
+import warnings
+import logging
+# from langchain_community.llms.ollama import Ollama
+import asyncio
+import yt_dlp
+import re
+import json
+import os
+from dotenv import load_dotenv
+from together import Together
 NUTRITION_PROMPT = """
 You are a dietitian. Analyze the recipe details below to calculate the nutritional values (calories, protein, carbs, fat, fiber, vitamins). Provide per-serving and total values if applicable. Answer only what is asked by the user.
 
@@ -104,18 +114,22 @@ Include relevant culinary techniques, ingredient substitutions, or time-saving t
 Maintain a respectful, supportive, and encouraging tone.
 """
 
-import warnings
-import logging
-import re
-from langchain_community.llms.ollama import Ollama
-import asyncio
-import yt_dlp
-import re
-import json
+
 
 # Suppress warnings and logging for cleaner output
 warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
+
+# # Load environment variables
+script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(script_dir, '.env'))
+
+# Initialize Together AI client
+api_key = os.getenv('TOGETHER_API_KEY')
+if not api_key:
+    raise ValueError("TOGETHER_API_KEY not found in environment variables")
+
+together_client = Together(api_key=api_key)
 
 def clean_subtitle_text(subtitle_data):
     """
@@ -269,20 +283,41 @@ You are a professional chef assistant. Extract and format the following details 
 
 
 # Step 3: Query LLAMA for Extraction
-def query_llm(prompt, model="llama3"):
+
+def query_llm(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
     """
-    Queries the LLAMA 3 model using Ollama with the given prompt.
+    Queries the Together AI LLM with the given prompt.
     """
     try:
-        print("Trying")
-        model_instance = Ollama(model=model)
-        print("lamma 3")
-        response = model_instance.invoke(prompt)
-
-        print("REsponse")
-        return response.strip()
+        response = together_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Error querying LLM: {e}"
+
+async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", websocket=None):
+    """
+    Queries the Together AI LLM and streams the response.
+    """
+    try:
+        stream = together_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True
+        )
+        
+        full_response = ""
+        for chunk in stream:
+            chunk_text = chunk.choices[0].delta.content or ""
+            full_response += chunk_text
+            yield chunk_text
+
+    except Exception as e:
+        error_msg = f"Error querying LLM: {e}"
+        yield error_msg
+
 
 async def extract_recipe(transcript):
     """
@@ -296,50 +331,12 @@ async def extract_recipe(transcript):
         yield chunk
     # return query_llm(prompt)
 
-import asyncio
 
-async def query_llm_stream(prompt, model="llama3", websocket=None):
-    """
-    Queries the LLAMA model and streams the response.
-    
-    Args:
-        prompt (str): The prompt to send to the LLM
-        model (str): The LLM model to use
-        websocket (optional): WebSocket connection for real-time streaming
-    
-    Yields:
-        str: Chunks of the response as they are generated
-    """
-    try:
-        model_instance = Ollama(model=model)
-        # We expect a synchronous generator from this method
-        response_stream = model_instance.stream(prompt)
-        
-        # Accumulate the full response
-        full_response = ""
-        
-        # Iterate through the chunks
-        for chunk in response_stream:
-            # Check if chunk is a dictionary or a string
-            if isinstance(chunk, dict):
-                chunk_text = chunk.get('text', '')
-            else:
-                chunk_text = chunk
-            
-            # Accumulate the full response
-            full_response += chunk_text
-            
-            # Yield the chunk for real-time streaming
-            yield chunk_text
-
-    except Exception as e:
-        error_msg = f"Error querying LLM: {e}"
-        yield error_msg
 
 
 # Recipe ChatBot Class
 class RecipeChatBot:
-    def __init__(self, model="llama3"):
+    def __init__(self, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
         self.model = model
         self.recipe_data = None
         self.conversation_history = []
