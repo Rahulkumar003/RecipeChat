@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
+import { useParams } from 'react-router-dom';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
 import { MdSend } from 'react-icons/md';
@@ -11,7 +12,7 @@ import { io } from 'socket.io-client';
 //   transports: ['websocket', 'polling'],
 // });
 
-const socket = io('http://192.168.47.23:5000/', {
+const socket = io('http://192.168.1.203:5000', {
   transports: ['websocket', 'polling'],
 });
 
@@ -25,6 +26,7 @@ socket.on('connect_error', (error) => {
 });
 
 const NewChatView = () => {
+  const { videoUrl } = useParams();
   const messagesEndRef = useRef();
   const inputRef = useRef();
   const [formValue, setFormValue] = useState('');
@@ -45,6 +47,37 @@ const NewChatView = () => {
 
     addMessage((prevMessages) => (prevMessages.length === 0 ? [welcomeMessage] : prevMessages));
   }, [addMessage]);
+
+  // Auto-fetch recipe if video URL is in route params
+  useEffect(() => {
+    if (videoUrl && messages.length <= 1) {
+      // Only auto-fetch if no conversation has started
+      const decodedUrl = decodeURIComponent(videoUrl);
+
+      // Add user message showing the URL
+      addMessage({
+        id: `msg_user_${Date.now()}`,
+        createdAt: Date.now(),
+        text: decodedUrl,
+        ai: false,
+      });
+
+      // Start fetching recipe
+      setIsStreaming(true);
+      const loadingMessageId = `msg_loading_${Date.now()}`;
+
+      addMessage({
+        id: loadingMessageId,
+        createdAt: Date.now(),
+        text: 'Fetching recipe details...',
+        ai: true,
+        isLoading: true,
+      });
+      setLoadingMessage(loadingMessageId);
+
+      socket.emit('fetch_recipe_stream', { video_url: decodedUrl });
+    }
+  }, [videoUrl, messages.length, addMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

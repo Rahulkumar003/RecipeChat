@@ -12,7 +12,7 @@ load_dotenv()
 
 # Read CORS origins from environment
 # allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
-allowed_origins=["http://localhost:3000"]
+allowed_origins=["http://localhost:3000","http://192.168.16.1:3000"]
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=allowed_origins)
