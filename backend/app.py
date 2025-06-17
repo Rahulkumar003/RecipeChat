@@ -83,4 +83,4 @@ def fetch_recipe_stream(data):
 
 if __name__ == '__main__':
     # Bind to all network interfaces
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, use_reloader=False)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
