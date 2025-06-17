@@ -5,36 +5,42 @@ import { ChatContext } from '../context/chatContext';
 import { MdSend } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
-// //socket connection :
-// const socket = io('https://backend-released-recipechat.onrender.com', {
-// // const socket = io('https://recipe-chat-backend-532248491422.us-central1.run.app', {
-
-//   transports: ['websocket', 'polling'],
-// });
-
-const socket = io('http://192.168.47.23:5000', {
-  transports: ['websocket', 'polling'],
-});
-
-// Add after socket initialization
-socket.on('connect', () => {
-  console.log('Connected to backend');
-});
-
-socket.on('connect_error', (error) => {
-  console.error('Connection error:', error);
-});
-
 const NewChatView = () => {
   const { videoUrl } = useParams();
   const messagesEndRef = useRef();
   const inputRef = useRef();
+  const socketRef = useRef(null);
   const [formValue, setFormValue] = useState('');
   const [messages, addMessage] = useContext(ChatContext);
   const [isFetchingRecipe, setIsFetchingRecipe] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [isRecipeFetchInProgress, setIsRecipeFetchInProgress] = useState(false);
+
+  // Initialize socket connection once
+  useEffect(() => {
+    if (!socketRef.current) {
+      socketRef.current = io('http://192.168.47.23:5000', {
+        transports: ['websocket', 'polling'],
+      });
+
+      socketRef.current.on('connect', () => {
+        console.log('Connected to backend');
+      });
+
+      socketRef.current.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+      });
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []);
 
   // Add initial welcome message on component mount (only once)
   useEffect(() => {
@@ -50,8 +56,9 @@ const NewChatView = () => {
 
   // Auto-fetch recipe if video URL is in route params
   useEffect(() => {
-    if (videoUrl && messages.length <= 1) {
+    if (videoUrl && messages.length <= 1 && !isRecipeFetchInProgress && socketRef.current) {
       // Only auto-fetch if no conversation has started
+      setIsRecipeFetchInProgress(true);
       const decodedUrl = decodeURIComponent(videoUrl);
 
       // Add user message showing the URL
@@ -75,9 +82,9 @@ const NewChatView = () => {
       });
       setLoadingMessage(loadingMessageId);
 
-      socket.emit('fetch_recipe_stream', { video_url: decodedUrl });
+      socketRef.current.emit('fetch_recipe_stream', { video_url: decodedUrl });
     }
-  }, [videoUrl, messages.length, addMessage]);
+  }, [videoUrl, messages.length, addMessage, isRecipeFetchInProgress]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,15 +92,19 @@ const NewChatView = () => {
 
   // Enhanced socket event listener
   useEffect(() => {
+    if (!socketRef.current) return;
+
     const handleResponse = (data) => {
       console.log('Received response:', data);
 
       if (data.error) {
         console.error('Socket error:', data.error);
 
-        if (loadingMessage) {
-          addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
-        }
+        // Clear loading message
+        addMessage((prevMessages) => {
+          return prevMessages.filter((msg) => !msg.isLoading);
+        });
+        setLoadingMessage('');
 
         addMessage({
           id: `msg_error_${Date.now()}`,
@@ -103,14 +114,23 @@ const NewChatView = () => {
         });
         setIsStreaming(false);
         setCurrentAIMessageId(null);
-        setLoadingMessage('');
+        setIsRecipeFetchInProgress(false);
       } else if (data.complete) {
+        // Clear loading message
+        addMessage((prevMessages) => {
+          return prevMessages.filter((msg) => !msg.isLoading);
+        });
+        setLoadingMessage('');
         setIsStreaming(false);
         setCurrentAIMessageId(null);
         setIsFetchingRecipe(false);
+        setIsRecipeFetchInProgress(false);
       } else if (data.streaming) {
+        // Clear loading message on first streaming data
         if (loadingMessage) {
-          addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
+          addMessage((prevMessages) => {
+            return prevMessages.filter((msg) => !msg.isLoading);
+          });
           setLoadingMessage('');
         }
 
@@ -143,77 +163,21 @@ const NewChatView = () => {
       }
     };
 
+    const socket = socketRef.current;
     socket.on('response', handleResponse);
-    return () => socket.off('response', handleResponse);
-  }, [currentAIMessageId, loadingMessage, addMessage]);
+    socket.on('recipe_stream', handleResponse);
 
-  // Recipe stream listener
-  useEffect(() => {
-    const handleRecipeStream = (data) => {
-      console.log('Received recipe chunk:', data);
-
-      if (data.error) {
-        console.error('Recipe fetch error:', data.error);
-
-        if (loadingMessage) {
-          addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
-        }
-
-        addMessage({
-          id: `msg_error_${Date.now()}`,
-          createdAt: Date.now(),
-          text: `Error fetching recipe: ${data.error}`,
-          ai: true,
-        });
-        setIsStreaming(false);
-        setCurrentAIMessageId(null);
-        setLoadingMessage('');
-      } else if (data.complete) {
-        setIsStreaming(false);
-        setIsFetchingRecipe(false);
-        setCurrentAIMessageId(null);
-      } else if (data.streaming) {
-        if (loadingMessage) {
-          addMessage((prevMessages) => prevMessages.filter((msg) => msg.id !== loadingMessage));
-          setLoadingMessage('');
-        }
-
-        addMessage((prevMessages) => {
-          if (!currentAIMessageId) {
-            const newMessageId = `msg_recipe_${Date.now()}`;
-            setCurrentAIMessageId(newMessageId);
-            return [
-              ...prevMessages,
-              {
-                id: newMessageId,
-                createdAt: Date.now(),
-                text: data.data,
-                ai: true,
-                complete: false,
-              },
-            ];
-          }
-
-          return prevMessages.map((msg) =>
-            msg.id === currentAIMessageId
-              ? {
-                  ...msg,
-                  text: (msg.text || '') + data.data,
-                }
-              : msg,
-          );
-        });
-        scrollToBottom();
+    return () => {
+      if (socket) {
+        socket.off('response', handleResponse);
+        socket.off('recipe_stream', handleResponse);
       }
     };
-
-    socket.on('recipe_stream', handleRecipeStream);
-    return () => socket.off('recipe_stream', handleRecipeStream);
   }, [currentAIMessageId, loadingMessage, addMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formValue) return;
+    if (!formValue || !socketRef.current) return;
 
     const cleanInput = formValue.trim();
     setFormValue('');
@@ -238,10 +202,11 @@ const NewChatView = () => {
     });
     setLoadingMessage(loadingMessageId);
 
-    if (isFetchingRecipe) {
-      socket.emit('fetch_recipe_stream', { video_url: cleanInput });
+    if (isFetchingRecipe && !isRecipeFetchInProgress) {
+      setIsRecipeFetchInProgress(true);
+      socketRef.current.emit('fetch_recipe_stream', { video_url: cleanInput });
     } else {
-      socket.emit('generate_text', { prompt: cleanInput });
+      socketRef.current.emit('generate_text', { prompt: cleanInput });
     }
   };
 

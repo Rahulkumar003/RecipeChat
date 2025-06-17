@@ -101,8 +101,6 @@ def get_youtube_subtitles(url, lang='en'):
         dict: A dictionary containing subtitle information
     """
     try:
-        print(f"Processing URL: {url}")
-
         # Extract the video ID from different YouTube URL formats
         video_id = None
         if "v=" in url:
@@ -112,12 +110,8 @@ def get_youtube_subtitles(url, lang='en'):
         elif "embed/" in url:
             video_id = url.split("embed/")[1].split("?")[0]
 
-        print(f"Extracted video ID: {video_id}")
-
         if not video_id:
             raise ValueError("Could not extract video ID from URL")
-
-        print("Searching for English or Hindi transcripts...")
 
         # Preferred languages for manual and auto transcripts
         manual_priority = ['en', 'hi']
@@ -126,10 +120,8 @@ def get_youtube_subtitles(url, lang='en'):
         # 1. Try manual transcripts
         try:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            print(f"Transcript list obtained.")
             try:
                 transcript = transcript_list.find_manually_created_transcript(manual_priority)
-                print(f"Found manually created transcript for: {transcript.language_code}")
                 transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
                 full_text = clean_subtitle_text(transcript_data)
                 if full_text and len(full_text) > 10:
@@ -139,11 +131,10 @@ def get_youtube_subtitles(url, lang='en'):
                         'type': 'manual'
                     }
             except Exception as e:
-                print(f"No manual transcript in en/hi: {e}")
+                pass
             # 2. Try auto-generated transcripts
             try:
                 transcript = transcript_list.find_generated_transcript(auto_priority)
-                print(f"Found auto-generated transcript for: {transcript.language_code}")
                 transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
                 full_text = clean_subtitle_text(transcript_data)
                 if full_text and len(full_text) > 10:
@@ -153,11 +144,10 @@ def get_youtube_subtitles(url, lang='en'):
                         'type': 'auto-generated'
                     }
             except Exception as e:
-                print(f"No auto-generated transcript in en/hi: {e}")
+                pass
             # 3. Try any transcript that script API can fetch
             try:
                 transcript = transcript_list.find_transcript(transcript_list._langs)
-                print(f"Found other transcript for: {transcript.language_code}")
                 transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
                 full_text = clean_subtitle_text(transcript_data)
                 if full_text and len(full_text) > 10:
@@ -167,17 +157,14 @@ def get_youtube_subtitles(url, lang='en'):
                         'type': 'fallback-any-transcript'
                     }
             except Exception as e:
-                print(f"No fallback-any transcript in available list: {e}")
+                pass
             # If nothing worked, return available langs
             available_languages = [(tr.language_code, 'auto' if tr.is_generated else 'manual') for tr in
                                    transcript_list]
             raise Exception(f"Could not fetch transcript. Available: {available_languages}")
         except Exception as e:
-            print(f"Transcript API error: {e}")
             raise e
     except Exception as e:
-        print(f"Error fetching subtitles: {e}")
-        print(f"Error type: {type(e).__name__}")
         return {
             'full_text': '',
             'languages': [],
@@ -189,10 +176,12 @@ EXTRACTION_PROMPT = """
 You are a professional chef assistant. Extract and format the following details from the provided recipe transcript. Your output must strictly adhere to the specified structure below. Do not include any additional text, headings, or commentary. Begin the output directly with the recipe title:
 
 \\*\\*Title\\*\\*: The concise name of the recipe.  
+
 \\*\\*Ingredients\\*\\*:  
-\\- List all ingredients with their quantities, each preceded by a bullet point (e.g., `\\-`).  
+\\- List all ingredients with their quantities in bullet points.
+  
 \\*\\*Procedure\\*\\*:  
-\\- Step-by-step cooking instructions, each preceded by a bullet point (e.g., `\\-`).  
+\\- Step-by-step cooking instructions in bullet points.  
 
 {transcript}
 """
@@ -202,9 +191,6 @@ You are a professional chef assistant. Extract and format the following details 
 # Step 3: Query LLAMA for Extraction
 
 def query_llm(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
-    """
-    Queries the Together AI LLM with the given prompt.
-    """
     try:
         response = together_client.chat.completions.create(
             model=model,
@@ -215,9 +201,6 @@ def query_llm(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
         return f"Error querying LLM: {e}"
 
 async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", websocket=None):
-    """
-    Queries the Together AI LLM and streams the response.
-    """
     try:
         stream = together_client.chat.completions.create(
             model=model,
@@ -237,16 +220,12 @@ async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turb
 
 
 async def extract_recipe(transcript):
-    """
-    Extract structured recipe data using LLM.
-    """
-    
     prompt = EXTRACTION_PROMPT.format(transcript=transcript)
+    full_response = ""
     async for chunk in query_llm_stream(prompt):
-        yield chunk
-    # return query_llm(prompt)
+        full_response += chunk
 
-
+    yield full_response
 
 
 # Recipe ChatBot Class
@@ -261,15 +240,9 @@ class RecipeChatBot:
         Extract and process recipe details from a YouTube video.
         """
         try:
-            print("=" * 80)
-            print("FETCHING TRANSCRIPT...")
-            print("=" * 80)
-
+            print("Fetching transcript...")
             transcript_data = get_youtube_subtitles(video_url)
             transcript_text = transcript_data['full_text']
-
-            print(f"Transcript length: {len(transcript_text)} characters")
-            print(f"Available languages: {transcript_data.get('languages', [])}")
 
             if 'error' in transcript_data:
                 error_msg = f"Transcript extraction failed: {transcript_data['error']}"
@@ -283,22 +256,14 @@ class RecipeChatBot:
                 yield error_msg
                 return
 
-            print("-" * 80)
-            print("FULL TRANSCRIPT:")
-            print("-" * 80)
-            print(transcript_text)
-            print("-" * 80)
-            print("END OF TRANSCRIPT")
-            print("=" * 80)
-
-            print("STARTING RECIPE EXTRACTION...")
+            print("Extracting recipe...")
             full_response = ""
             async for chunk in extract_recipe(transcript_text):
                 full_response += chunk
                 yield chunk
 
             self.recipe_data = full_response
-            print("RECIPE EXTRACTION COMPLETED")
+            print("Recipe extraction completed")
 
         except Exception as e:
             error_msg = f"Error processing video: {str(e)}"
@@ -312,7 +277,7 @@ class RecipeChatBot:
         """
         if not self.recipe_data:
             return "Error: Recipe data is missing. Please provide a valid video URL."
-        
+
         introduction = (
             "Hi! I'm your Recipe Assistant. I can help you understand, modify, or get insights about recipes.\n"
             "Here’s the recipe I extracted for you:"
@@ -354,6 +319,7 @@ class RecipeChatBot:
         for turn in self.conversation_history:
             role = turn["role"].capitalize()
             print(f"{role}: {turn['content']}")
+
 async def handle_user_question(user_question):
     async for chunk in bot.ask_question_stream(user_question):
         print(chunk, end='', flush=True)
@@ -373,9 +339,6 @@ if __name__ == "__main__":
     # recipe_data = bot.fetch_recipe(video_url)
     asyncio.run(handle_recipe_genrate(video_url))
     # print(recipe_data)
-    # if "Error" in recipe_data:
-    #     print("Failed to fetch recipe. Please try again with a different video.")
-    # else:
     print(bot.introduce_and_display_recipe())
 
     # Step 2: Ask Questions in a Loop

@@ -12,7 +12,7 @@ load_dotenv()
 
 # Read CORS origins from environment
 # allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
-allowed_origins=["http://localhost:3000","http://192.168.56.1:3000"]
+allowed_origins=["http://localhost:3001","http://192.168.56.1:3001"]
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=allowed_origins)
@@ -52,6 +52,7 @@ def generate_text(data):
 
 @socketio.on('fetch_recipe_stream')
 def fetch_recipe_stream(data):
+    print(f"[DEBUG] fetch_recipe_stream called with data: {data}")
     video_url = data.get('video_url')
     if not video_url:
         emit('recipe_stream', {"error": "Video URL is required"})
@@ -61,12 +62,14 @@ def fetch_recipe_stream(data):
         try:        
             async def stream_recipe():
                 try:
+                    print(f"[DEBUG] Starting recipe fetch for URL: {video_url}")
                     async for chunk in chatbot.fetch_recipe(video_url):
                         socketio.emit('recipe_stream', {
                             "data": chunk, 
                             "streaming": True
                         })
-                    
+
+                    print(f"[DEBUG] Recipe fetch completed for URL: {video_url}")
                     socketio.emit('recipe_stream', {"complete": True})
                 
                 except Exception as e:
