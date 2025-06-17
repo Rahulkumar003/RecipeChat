@@ -1,12 +1,12 @@
 flask==2.3.3
-flask-cors==4.0.0
+flask-cors==6.0.0
 flask-socketio==5.3.6
 python-socketio==5.9.0
 python-engineio==4.7.1
 asyncio==3.4.3
-werkzeug==2.3.7
+werkzeug==3.0.6
 python-dotenv==1.0.1
 together==1.5.5
-gunicorn==21.2.0
+gunicorn==23.0.0
 eventlet==0.33.3
-yt_dlp==2025.6.9
+youtube-transcript-api==0.6.2

@@ -2,12 +2,13 @@ import warnings
 import logging
 # from langchain_community.llms.ollama import Ollama
 import asyncio
-import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 import re
 import json
 import os
 from dotenv import load_dotenv
 from together import Together
+
 NUTRITION_PROMPT = """
 You are a dietitian. Analyze the recipe details below to calculate the nutritional values (calories, protein, carbs, fat, fiber, vitamins). Provide per-serving and total values if applicable. Answer only what is asked by the user.
 
@@ -136,41 +137,24 @@ def clean_subtitle_text(subtitle_data):
     Thoroughly clean and format subtitle text
     
     Args:
-        subtitle_data (str or dict): Subtitle data from yt-dlp
+        subtitle_data (list or str): Subtitle data from youtube-transcript-api
     
     Returns:
         str: Cleaned, formatted subtitle text
     """
-    def extract_text_from_json(data):
-        """Extract text from JSON-like subtitle data"""
-        texts = []
-        
-        # Handle nested dictionary structure
-        if isinstance(data, dict):
-            # Look for 'events' key which often contains subtitles
-            events = data.get('events', [])
-            for event in events:
-                if 'segs' in event:
-                    texts.extend(seg.get('utf8', '') for seg in event['segs'] if 'utf8' in seg)
-        
-        # Handle list of dictionaries
-        elif isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict) and 'utf8' in item:
-                    texts.append(item['utf8'])
-        
-        # Handle string input
-        elif isinstance(data, str):
-            texts = [data]
-        
-        return texts
+    texts = []
 
-    # Extract text
-    if isinstance(subtitle_data, str):
-        # For raw VTT or other text formats
+    # Handle list of dictionaries from youtube-transcript-api
+    if isinstance(subtitle_data, list):
+        for item in subtitle_data:
+            if isinstance(item, dict) and 'text' in item:
+                texts.append(item['text'])
+    # Handle string input
+    elif isinstance(subtitle_data, str):
         texts = [subtitle_data]
     else:
-        texts = extract_text_from_json(subtitle_data)
+        # Fallback for other formats
+        texts = [str(subtitle_data)]
 
     # Combine texts
     full_text = ' '.join(texts)
@@ -205,67 +189,37 @@ def get_youtube_subtitles(url, lang='en'):
     Returns:
         dict: A dictionary containing subtitle information
     """
-    # Configure yt-dlp options for subtitle extraction
-    ydl_opts = {
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': [lang],
-        'skip_download': True,
-        'subtitlesformat': 'json3',  # Prefer JSON format for better parsing
-    }
+    try:
+        # Extract the video ID from different YouTube URL formats
+        video_id = None
+        if "v=" in url:
+            video_id = url.split("v=")[1].split("&")[0]
+        elif "youtu.be/" in url:
+            video_id = url.split("youtu.be/")[1].split("?")[0]
+        elif "embed/" in url:
+            video_id = url.split("embed/")[1].split("?")[0]
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            # Extract video information
-            info = ydl.extract_info(url, download=False)
-            
-            # List available languages
-            available_langs = list(info.get('subtitles', {}).keys()) or \
-                              list(info.get('automatic_captions', {}).keys())
-            
-            # If specified language not found, try the first available
-            if lang not in available_langs and available_langs:
-                lang = available_langs[0]
-            
-            # Prefer manual subtitles, fall back to auto-generated
-            subtitle_info = (info.get('subtitles', {}).get(lang) or 
-                             info.get('automatic_captions', {}).get(lang))
-            
-            if subtitle_info:
-                # Use the first (usually best quality) subtitle URL
-                sub_url = subtitle_info[0]['url']
-                
-                # Fetch subtitle content
-                import urllib.request
-                with urllib.request.urlopen(sub_url) as response:
-                    subtitle_content = response.read().decode('utf-8')
-                
-                # Try parsing as JSON first
-                try:
-                    subtitle_json = json.loads(subtitle_content)
-                except json.JSONDecodeError:
-                    subtitle_json = subtitle_content
-                
-                # Clean and format the subtitle text
-                full_text = clean_subtitle_text(subtitle_json)
-                
-                return {
-                    'full_text': full_text,
-                    'languages': available_langs
-                }
-            
-            # If no subtitles found
-            return {
-                'full_text': '',
-                'languages': available_langs
-            }
-        
-        except Exception as e:
-            print(f"Error fetching subtitles: {e}")
-            return {
-                'full_text': '',
-                'languages': []
-            }
+        if not video_id:
+            raise ValueError("Could not extract video ID from URL")
+
+        # Get subtitles using youtube-transcript-api
+        subtitles = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+
+        # Extract and clean the full text
+        full_text = clean_subtitle_text(subtitles)
+
+        # Return formatted result
+        return {
+            'full_text': full_text,
+            'languages': [lang]  # We only requested one language
+        }
+
+    except Exception as e:
+        print(f"Error fetching subtitles: {e}")
+        return {
+            'full_text': '',
+            'languages': []
+        }
 
 # Step 2: Recipe Extraction Prompt
 EXTRACTION_PROMPT = """

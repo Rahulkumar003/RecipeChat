@@ -12,7 +12,7 @@ import { io } from 'socket.io-client';
 //   transports: ['websocket', 'polling'],
 // });
 
-const socket = io('http://192.168.1.203:5000', {
+const socket = io('http://192.168.47.23:5000', {
   transports: ['websocket', 'polling'],
 });
 
