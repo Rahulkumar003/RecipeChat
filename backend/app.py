@@ -62,7 +62,6 @@ def fetch_recipe_stream(data):
             async def stream_recipe():
                 try:
                     async for chunk in chatbot.fetch_recipe(video_url):
-                        print(f"Streaming recipe chunk: {chunk}")
                         socketio.emit('recipe_stream', {
                             "data": chunk, 
                             "streaming": True
@@ -84,4 +83,4 @@ def fetch_recipe_stream(data):
 
 if __name__ == '__main__':
     # Bind to all network interfaces
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, use_reloader=False)

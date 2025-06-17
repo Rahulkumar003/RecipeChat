@@ -1,94 +1,3 @@
-import warnings
-import logging
-# from langchain_community.llms.ollama import Ollama
-import asyncio
-from youtube_transcript_api import YouTubeTranscriptApi
-import re
-import json
-import os
-from dotenv import load_dotenv
-from together import Together
-
-NUTRITION_PROMPT = """
-You are a dietitian. Analyze the recipe details below to calculate the nutritional values (calories, protein, carbs, fat, fiber, vitamins). Provide per-serving and total values if applicable. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-SUBSTITUTION_PROMPT = """
-You are an expert chef. Suggest substitutions for missing or allergenic ingredients in the recipe, with brief explanations of why these substitutions work. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-PROCEDURE_PROMPT = """
-You are a culinary expert. Clarify doubts based on the user's question. Provide step-by-step guidance. Answer only what is asked by the user in detail.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-DIETARY_PROMPT = """
-You are a specialized nutritionist. Suggest recipe adjustments for the specified dietary requirement (e.g., vegan, keto, gluten-free). Provide relevant substitutions or removals. Clarify doubts based on the user's question. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-STORAGE_PROMPT = """
-You are a food storage expert. Provide details and clarify the user's question on how to store the dish, its shelf life, freezing options, and reheating instructions. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-SAFETY_PROMPT = """
-You are a food safety expert. Answer the user's question about food safety, including proper cooking, handling, or ingredient freshness. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-FLAVOR_PROMPT = """
-You are a flavor expert. Suggest ways to enhance or adjust the flavor of the recipe based on the user's question (e.g., spiciness, sweetness, balancing). Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
-CULTURAL_PROMPT = """
-You are a culinary historian. Provide cultural or historical context for the recipe, such as its origin or traditional significance, based on the user's question. Answer only what is asked by the user.
-
-Recipe Details:
-{recipe_data}
-
-User Question:
-{user_question}
-"""
-
 GENERAL_PROMPT = """
 You are a professional culinary expert with mastery of various cuisines and cooking techniques. Respond to user queries with precise, expert-level information. Avoid offering assistance, asking for clarification, or repeating the question. Provide only the specific answer or instructions required.
 
@@ -101,27 +10,29 @@ Deliver professional, authoritative answers with expert-level accuracy. Focus so
 User's Question: {user_question}
 
 Key Approach:
-
 Understand the question thoroughly.
-
 Respond with clarity, precision, and professionalism.
-
 Provide actionable, expert-level advice with clear instructions.
-
 Use an engaging, authoritative tone that conveys expertise.
-
 Include relevant culinary techniques, ingredient substitutions, or time-saving tips when appropriate.
-
 Maintain a respectful, supportive, and encouraging tone.
 """
 
+import warnings
+import logging
+import asyncio
+from youtube_transcript_api import YouTubeTranscriptApi
+import re
+import os
+from dotenv import load_dotenv
+from together import Together
 
 
 # Suppress warnings and logging for cleaner output
 warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
-# # Load environment variables
+# Load environment variables
 script_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(script_dir, '.env'))
 
@@ -190,6 +101,8 @@ def get_youtube_subtitles(url, lang='en'):
         dict: A dictionary containing subtitle information
     """
     try:
+        print(f"Processing URL: {url}")
+
         # Extract the video ID from different YouTube URL formats
         video_id = None
         if "v=" in url:
@@ -199,26 +112,76 @@ def get_youtube_subtitles(url, lang='en'):
         elif "embed/" in url:
             video_id = url.split("embed/")[1].split("?")[0]
 
+        print(f"Extracted video ID: {video_id}")
+
         if not video_id:
             raise ValueError("Could not extract video ID from URL")
 
-        # Get subtitles using youtube-transcript-api
-        subtitles = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+        print("Searching for English or Hindi transcripts...")
 
-        # Extract and clean the full text
-        full_text = clean_subtitle_text(subtitles)
+        # Preferred languages for manual and auto transcripts
+        manual_priority = ['en', 'hi']
+        auto_priority = ['en', 'hi']
 
-        # Return formatted result
-        return {
-            'full_text': full_text,
-            'languages': [lang]  # We only requested one language
-        }
-
+        # 1. Try manual transcripts
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            print(f"Transcript list obtained.")
+            try:
+                transcript = transcript_list.find_manually_created_transcript(manual_priority)
+                print(f"Found manually created transcript for: {transcript.language_code}")
+                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                full_text = clean_subtitle_text(transcript_data)
+                if full_text and len(full_text) > 10:
+                    return {
+                        'full_text': full_text,
+                        'languages': [transcript.language_code],
+                        'type': 'manual'
+                    }
+            except Exception as e:
+                print(f"No manual transcript in en/hi: {e}")
+            # 2. Try auto-generated transcripts
+            try:
+                transcript = transcript_list.find_generated_transcript(auto_priority)
+                print(f"Found auto-generated transcript for: {transcript.language_code}")
+                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                full_text = clean_subtitle_text(transcript_data)
+                if full_text and len(full_text) > 10:
+                    return {
+                        'full_text': full_text,
+                        'languages': [transcript.language_code],
+                        'type': 'auto-generated'
+                    }
+            except Exception as e:
+                print(f"No auto-generated transcript in en/hi: {e}")
+            # 3. Try any transcript that script API can fetch
+            try:
+                transcript = transcript_list.find_transcript(transcript_list._langs)
+                print(f"Found other transcript for: {transcript.language_code}")
+                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                full_text = clean_subtitle_text(transcript_data)
+                if full_text and len(full_text) > 10:
+                    return {
+                        'full_text': full_text,
+                        'languages': [transcript.language_code],
+                        'type': 'fallback-any-transcript'
+                    }
+            except Exception as e:
+                print(f"No fallback-any transcript in available list: {e}")
+            # If nothing worked, return available langs
+            available_languages = [(tr.language_code, 'auto' if tr.is_generated else 'manual') for tr in
+                                   transcript_list]
+            raise Exception(f"Could not fetch transcript. Available: {available_languages}")
+        except Exception as e:
+            print(f"Transcript API error: {e}")
+            raise e
     except Exception as e:
         print(f"Error fetching subtitles: {e}")
+        print(f"Error type: {type(e).__name__}")
         return {
             'full_text': '',
-            'languages': []
+            'languages': [],
+            'error': str(e)
         }
 
 # Step 2: Recipe Extraction Prompt
@@ -280,8 +243,6 @@ async def extract_recipe(transcript):
     
     prompt = EXTRACTION_PROMPT.format(transcript=transcript)
     async for chunk in query_llm_stream(prompt):
-        # full_response += chunk
-        print("yee gya chunk ===> ",chunk   )
         yield chunk
     # return query_llm(prompt)
 
@@ -299,17 +260,51 @@ class RecipeChatBot:
         """
         Extract and process recipe details from a YouTube video.
         """
-        transcript = get_youtube_subtitles(video_url)
-        print(transcript['full_text'])
-        if "Error" in transcript:
-            print(transcript)
-            yield "Error "+transcript
-         
-        full_response=""
-        async for chunk in extract_recipe(transcript):
-                    full_response += chunk
-                    yield chunk
-        self.recipe_data=full_response    
+        try:
+            print("=" * 80)
+            print("FETCHING TRANSCRIPT...")
+            print("=" * 80)
+
+            transcript_data = get_youtube_subtitles(video_url)
+            transcript_text = transcript_data['full_text']
+
+            print(f"Transcript length: {len(transcript_text)} characters")
+            print(f"Available languages: {transcript_data.get('languages', [])}")
+
+            if 'error' in transcript_data:
+                error_msg = f"Transcript extraction failed: {transcript_data['error']}"
+                print(error_msg)
+                yield error_msg
+                return
+
+            if not transcript_text or len(transcript_text) < 50:
+                error_msg = f"Error: Could not extract sufficient transcript data from the video. Transcript length: {len(transcript_text)}. Please ensure the video has subtitles available."
+                print(error_msg)
+                yield error_msg
+                return
+
+            print("-" * 80)
+            print("FULL TRANSCRIPT:")
+            print("-" * 80)
+            print(transcript_text)
+            print("-" * 80)
+            print("END OF TRANSCRIPT")
+            print("=" * 80)
+
+            print("STARTING RECIPE EXTRACTION...")
+            full_response = ""
+            async for chunk in extract_recipe(transcript_text):
+                full_response += chunk
+                yield chunk
+
+            self.recipe_data = full_response
+            print("RECIPE EXTRACTION COMPLETED")
+
+        except Exception as e:
+            error_msg = f"Error processing video: {str(e)}"
+            print(error_msg)
+            yield error_msg
+
 
     def introduce_and_display_recipe(self):
         """
@@ -324,84 +319,10 @@ class RecipeChatBot:
         )
         return f"{introduction}\n\n{self.recipe_data}\n\nFeel free to ask me any questions about the recipe!"
 
-    def classify_question(self, question):
-        """
-        Intelligently classify the user's question using a more nuanced approach.
-        
-        Args:
-            question (str): The user's input question
-        
-        Returns:
-            str: The most appropriate prompt category
-        """
-        
-        
-       
-        # If no specific category is found, use LLM for intelligent classification
-        classification_prompt = f"""
-        Classify the following user question into the most appropriate category for a recipe assistant just answer one word of matching category nothing else:
-
-        Question: {question}
-
-        Categories:
-        1. nutrition - Questions about calories, nutrients, health
-        2. substitution - Ingredient replacements or alternatives
-        3. procedure - Cooking methods, steps, techniques, summary
-        4. dietary - Diet-specific modifications
-        5. storage - Storing, preserving, shelf life
-        6. flavor - Taste enhancement, seasoning
-        7. safety - Cooking safety, handling
-        8. cultural - Recipe origin and history
-        9. general - Any other type of question
-
-        Choose the most specific category that matches the question's intent:"""
-        
-        # Use the LLM to make a final determination
-        try:
-            classification = query_llm(classification_prompt).lower().strip()
-            print("this is we get---->",classification)
-            # Map variations to standard categories
-            category_mapping = {
-                "nutrition": "nutrition",
-                "substitute": "substitution",
-                "ingredient": "substitution",
-                "procedure": "procedure",
-                "cooking": "procedure",
-                "dietary": "dietary",
-                "diet": "dietary",
-                "storage": "storage",
-                "preserve": "storage",
-                "flavor": "flavor",
-                "taste": "flavor",
-                "safety": "safety",
-                "cultural": "cultural",
-                "origin": "cultural",
-                "general": "general"
-            }
-            
-            # Find the best matching category
-            for key, value in category_mapping.items():
-                if key in classification:
-                    print(value)
-                    return "general"
-                    
-           
-            return "general"
-    
-        except Exception:
-            # Fallback to general if LLM classification fails
-            return "general"
-
 
     async def ask_question_stream(self, question):
         """
-        Asynchronous method to generate a streaming response to the user's question.
-        
-        Args:
-            question (str): The user's question about the recipe
-        
-        Yields:
-            str: Chunks of the response as they are generated
+        Asynchronous method to generate a streaming response to the user's question (always uses the general prompt).
         """
         if not self.recipe_data:
             yield "Please fetch a recipe first by providing a video URL."
@@ -413,33 +334,15 @@ class RecipeChatBot:
                 role = "User" if turn["role"] == "user" else "Assistant"
                 history_context += f"{role}: {turn['content']}\n"
             history_context += "\n"
-        # Determine the appropriate prompt
-        intent = self.classify_question(question)
-        prompt_mapping = {
-            "nutrition": NUTRITION_PROMPT,
-            "substitution": SUBSTITUTION_PROMPT,
-            "procedure": PROCEDURE_PROMPT,
-            "dietary": DIETARY_PROMPT,
-            "storage": STORAGE_PROMPT,
-            "flavor": FLAVOR_PROMPT,
-            "cultural": CULTURAL_PROMPT,
-            "safety": SAFETY_PROMPT,
-            "general": GENERAL_PROMPT,
-        }
-        modified_prompt = prompt_mapping[intent].format(
-        recipe_data=self.recipe_data, 
-        user_question=f"{history_context}Current Question: {question}"
-      )
-        # prompt = prompt_mapping[intent].format(recipe_data=self.recipe_data, user_question=question)
-
-        # Stream the response
+        # Always use GENERAL_PROMPT
+        prompt = GENERAL_PROMPT.format(
+            recipe_data=self.recipe_data,
+            user_question=f"{history_context}Current Question: {question}"
+        )
         full_response = ""
-        async for chunk in query_llm_stream(modified_prompt, model=self.model):
+        async for chunk in query_llm_stream(prompt, model=self.model):
             full_response += chunk
-            print("yee gya chunk ===> ",chunk   )
             yield chunk
-
-        # Update conversation history
         self.conversation_history.append({"role": "user", "content": question})
         self.conversation_history.append({"role": "assistant", "content": full_response})
 
