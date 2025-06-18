@@ -55,6 +55,44 @@ const ChatMessage = (props) => {
                 </code>
               );
             },
+            // Custom rendering for paragraphs - remove bottom margin
+            p({ children }) {
+              return <p className="mb-0 leading-relaxed">{children}</p>;
+            },
+            // Custom rendering for list items - tight spacing
+            li({ children }) {
+              return <li className="mb-0 leading-relaxed">{children}</li>;
+            },
+            // Custom rendering for unordered lists - reduced spacing
+            ul({ children }) {
+              return <ul className="mb-0 pl-4">{children}</ul>; // Removed space-y-0
+            },
+            // Custom rendering for ordered lists - reduced spacing
+            ol({ children }) {
+              return <ol className="mb-0 pl-4">{children}</ol>; // Removed space-y-0
+            },
+            // Custom rendering for headings - reduced spacing
+            h1({ children }) {
+              return <h1 className="text-xl font-bold mb-1 mt-2">{children}</h1>;
+            },
+            h2({ children }) {
+              return <h2 className="text-lg font-bold mb-1 mt-2">{children}</h2>;
+            },
+            h3({ children }) {
+              return <h3 className="text-base font-bold mb-1 mt-1">{children}</h3>;
+            },
+            // Custom rendering for blockquotes - reduced spacing
+            blockquote({ children }) {
+              return (
+                <blockquote className="border-l-4 border-gray-300 pl-4 my-1 italic">
+                  {children}
+                </blockquote>
+              );
+            },
+            // Custom rendering for line breaks
+            br() {
+              return <br className="leading-none" />;
+            },
           }}
         >
           {text}

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
-import { MdSend } from 'react-icons/md';
+import { MdSend, MdStop } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 const NewChatView = () => {
@@ -17,6 +17,82 @@ const NewChatView = () => {
   const [currentAIMessageId, setCurrentAIMessageId] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [isRecipeFetchInProgress, setIsRecipeFetchInProgress] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [hasStoppedGeneration, setHasStoppedGeneration] = useState(false);
+  const [isStoppingInProgress, setIsStoppingInProgress] = useState(false);
+  const [currentMessageId, setCurrentMessageId] = useState(null);
+
+  // Function to clean text formatting
+  const cleanText = (text) => {
+    return text
+      .replace(/\n{3,}/g, '\n\n') // Replace 3+ consecutive line breaks with just 2
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join('\n');
+  };
+
+  // Scroll to bottom when messages change IF AUTO-SCROLL is enabled
+  useEffect(() => {
+    if (shouldAutoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, shouldAutoScroll]);
+
+  // Check if user is near bottom of chat
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    // isNearBottom = user is within 100px of bottom
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShouldAutoScroll(isNearBottom);
+  };
+
+  // Stop streaming - user forced stop - with reconnect approach
+  const handleStop = () => {
+    setIsStoppingInProgress(true);
+    console.log('Stop requested - attempting to halt stream');
+
+    if (socketRef.current) {
+      // Send stop signal with the messageId received from the server
+      socketRef.current.emit('stop_stream', { messageId: currentMessageId || currentAIMessageId });
+      console.log(
+        `Stop signal sent to server for message: ${currentMessageId || currentAIMessageId}`,
+      );
+    }
+
+    // Mark as stopped to block incoming messages
+    setHasStoppedGeneration(true);
+    setIsStreaming(false);
+    setCurrentAIMessageId(null);
+    setCurrentMessageId(null);
+    setIsFetchingRecipe(false);
+    setIsRecipeFetchInProgress(false);
+    setLoadingMessage('');
+
+    // Clean up message display
+    addMessage((prevMessages) => {
+      return prevMessages
+        .map((msg) => {
+          if (msg.id === currentAIMessageId && msg.ai && !msg.complete) {
+            // Mark message as complete when stopped, trim trailing newlines
+            return {
+              ...msg,
+              text: cleanText((msg.text || '').trim()) + '\n\n[Generation stopped by user]',
+              complete: true,
+              stopped: true,
+            };
+          }
+          return msg;
+        })
+        .filter((msg) => !msg.isLoading);
+    });
+
+    // Reset stopped state after a delay
+    setTimeout(() => {
+      setHasStoppedGeneration(false);
+      setIsStoppingInProgress(false);
+    }, 500);
+  };
 
   // Initialize socket connection once
   useEffect(() => {
@@ -86,16 +162,36 @@ const NewChatView = () => {
     }
   }, [videoUrl, messages.length, addMessage, isRecipeFetchInProgress]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   // Enhanced socket event listener
   useEffect(() => {
     if (!socketRef.current) return;
 
     const handleResponse = (data) => {
       console.log('Received response:', data);
+
+      // Track messageId from the server
+      if (data.messageId && !currentMessageId) {
+        setCurrentMessageId(data.messageId);
+      }
+
+      // Server acknowledged our stop request
+      if (data.stopped) {
+        setIsStreaming(false);
+        setIsStoppingInProgress(false);
+        return;
+      }
+
+      // Block all incoming messages if we're in the process of stopping
+      if (isStoppingInProgress) {
+        console.log('Ignoring data - stop in progress');
+        return;
+      }
+
+      // Ignore incoming data if stop was pressed
+      if (hasStoppedGeneration) {
+        console.log('Ignoring incoming data after stop');
+        return;
+      }
 
       if (data.error) {
         console.error('Socket error:', data.error);
@@ -114,11 +210,23 @@ const NewChatView = () => {
         });
         setIsStreaming(false);
         setCurrentAIMessageId(null);
+        setIsFetchingRecipe(false);
         setIsRecipeFetchInProgress(false);
       } else if (data.complete) {
-        // Clear loading message
+        // Clear loading message and clean final text
         addMessage((prevMessages) => {
-          return prevMessages.filter((msg) => !msg.isLoading);
+          return prevMessages
+            .map((msg) => {
+              if (msg.id === currentAIMessageId) {
+                return {
+                  ...msg,
+                  text: cleanText(msg.text || ''),
+                  complete: true,
+                };
+              }
+              return msg;
+            })
+            .filter((msg) => !msg.isLoading);
         });
         setLoadingMessage('');
         setIsStreaming(false);
@@ -159,7 +267,6 @@ const NewChatView = () => {
               : msg,
           );
         });
-        scrollToBottom();
       }
     };
 
@@ -167,13 +274,31 @@ const NewChatView = () => {
     socket.on('response', handleResponse);
     socket.on('recipe_stream', handleResponse);
 
+    // Listen for stop_acknowledged from server
+    socket.on('stop_acknowledged', (data) => {
+      console.log('Stop acknowledged by server:', data);
+      // Server confirmed it stopped generation
+      setIsStreaming(false);
+      setCurrentAIMessageId(null);
+      setCurrentMessageId(null);
+      setIsStoppingInProgress(false);
+    });
+
     return () => {
       if (socket) {
         socket.off('response', handleResponse);
         socket.off('recipe_stream', handleResponse);
+        socket.off('stop_acknowledged');
       }
     };
-  }, [currentAIMessageId, loadingMessage, addMessage]);
+  }, [
+    currentAIMessageId,
+    currentMessageId,
+    loadingMessage,
+    addMessage,
+    hasStoppedGeneration,
+    isStoppingInProgress,
+  ]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -181,6 +306,9 @@ const NewChatView = () => {
 
     const cleanInput = formValue.trim();
     setFormValue('');
+
+    // Reset auto-scroll when user sends a message
+    setShouldAutoScroll(true);
 
     addMessage({
       id: `msg_user_${Date.now()}`,
@@ -217,17 +345,14 @@ const NewChatView = () => {
     }
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
+  // Only scroll on initial load, not on every message change
   useEffect(() => {
     inputRef.current.focus();
   }, []);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 min-h-[calc(100vh-2rem)] flex flex-col max-w-3xl mx-auto">
-      <main className="flex-grow overflow-y-auto space-y-4 mb-4">
+      <main className="flex-grow overflow-y-auto space-y-4 mb-4" onScroll={handleScroll}>
         {messages.map((message) => (
           <ChatMessage key={message.id} message={message} />
         ))}
@@ -255,17 +380,35 @@ const NewChatView = () => {
             }
             disabled={isStreaming}
           />
-          <button
-            type="submit"
-            className={`p-3 ${
-              formValue && !isStreaming
-                ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
-                : 'text-gray-400'
-            } transition-colors`}
-            disabled={!formValue || isStreaming}
-          >
-            <MdSend size={24} />
-          </button>
+          {!isStreaming ? (
+            <button
+              type="submit"
+              className={`p-3 ${
+                formValue
+                  ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
+                  : 'text-gray-400'
+              } transition-colors`}
+              disabled={!formValue || isStoppingInProgress}
+            >
+              <MdSend size={24} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`p-3 flex items-center justify-center rounded-r ${
+                isStoppingInProgress ? 'bg-gray-500' : 'bg-red-500 hover:bg-red-600'
+              } text-white transition-colors`}
+              onClick={handleStop}
+              disabled={isStoppingInProgress}
+              title={isStoppingInProgress ? 'Stopping...' : 'Stop Generating'}
+            >
+              {isStoppingInProgress ? (
+                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+              ) : (
+                <MdStop size={24} />
+              )}
+            </button>
+          )}
         </div>
       </form>
     </div>

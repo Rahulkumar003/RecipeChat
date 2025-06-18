@@ -27,8 +27,7 @@ import os
 from dotenv import load_dotenv
 from together import Together
 
-
-# Suppress warnings and logging for cleaner output
+# Suppress warnings and logging  cleaner output
 warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
@@ -173,17 +172,25 @@ def get_youtube_subtitles(url, lang='en'):
 
 # Step 2: Recipe Extraction Prompt
 EXTRACTION_PROMPT = """
-You are a professional chef assistant. Extract and format the following details from the provided recipe transcript. Your output must strictly adhere to the specified structure below. Do not include any additional text, headings, or commentary. Begin the output directly with the recipe title:
+You are a professional chef assistant. Extract and format the following details from the provided recipe transcript. Your output must strictly adhere to the specified markdown structure below. Each ingredient and procedure item MUST start with a dash (-) to create proper bullet points.
 
-\\*\\*Title\\*\\*: The concise name of the recipe.  
+**Title**: The concise name of the recipe.
 
-\\*\\*Ingredients\\*\\*:  
-\\- List all ingredients with their quantities in bullet points.
+**Ingredients**:
+- First ingredient with quantity
+- Second ingredient with quantity
+- Third ingredient with quantity
+(Continue this pattern for all ingredients)
   
-\\*\\*Procedure\\*\\*:  
-\\- Step-by-step cooking instructions in bullet points.  
+**Procedure**:
+- First step instruction
+- Second step instruction
+- Third step instruction
+(Continue this pattern for all procedure steps)
 
-{transcript}
+IMPORTANT: Every single ingredient and procedure step must begin with "- " (dash followed by space) for proper formatting.
+
+Recipe transcript: {transcript}
 """
 
 
@@ -218,15 +225,13 @@ async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turb
         error_msg = f"Error querying LLM: {e}"
         yield error_msg
 
-
 async def extract_recipe(transcript):
     prompt = EXTRACTION_PROMPT.format(transcript=transcript)
     full_response = ""
     async for chunk in query_llm_stream(prompt):
         full_response += chunk
-
+    
     yield full_response
-
 
 # Recipe ChatBot Class
 class RecipeChatBot:
@@ -263,6 +268,7 @@ class RecipeChatBot:
                 yield chunk
 
             self.recipe_data = full_response
+            print(f"Recipe Summary:\n{self.recipe_data}")  # Print cleaned recipe in log
             print("Recipe extraction completed")
 
         except Exception as e:

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { fetchRecipe, askQuestion } from './apiService';
 
 const RecipeComponent = () => {
@@ -35,7 +36,7 @@ const RecipeComponent = () => {
       />
       <button onClick={handleFetchRecipe}>Fetch Recipe</button>
 
-      {recipeData && <div>{recipeData}</div>}
+      {recipeData && <ReactMarkdown>{recipeData}</ReactMarkdown>}
 
       <input
         type="text"
@@ -45,7 +46,7 @@ const RecipeComponent = () => {
       />
       <button onClick={handleAskQuestion}>Ask Question</button>
 
-      {response && <div>{response}</div>}
+      {response && <ReactMarkdown>{response}</ReactMarkdown>}
     </div>
   );
 };
