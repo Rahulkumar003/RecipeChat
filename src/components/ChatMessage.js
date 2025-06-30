@@ -17,7 +17,7 @@ const ChatMessage = (props) => {
 
   if (isLoading) {
     return (
-      <div key={id} className="bg-[#eff6ff] flex-row-reverse message px-4 py-2">
+      <div key={id} className="bg-[#eff6ff] flex-row-reverse message px-2 py-1 md:px-4 md:py-2">
         <div className="message__wrapper">
           <div className="flex items-center">
             <div className="animate-spin rounded-full h-5 w-5 mr-2 border-t-2 border-blue-500"></div>
@@ -27,8 +27,8 @@ const ChatMessage = (props) => {
 
         <div className="message__pic">
           <div className="avatar">
-            <div className="w-8 border rounded-full">
-              <img width="30" src={logo} alt="Logo" />
+            <div className="w-6 border rounded-full md:w-8">
+              <img width="25" src={logo} alt="Logo" />
             </div>
           </div>
         </div>
@@ -37,10 +37,13 @@ const ChatMessage = (props) => {
   }
 
   return (
-    <div key={id} className={`${ai ? 'bg-[#eff6ff]' : ''} flex-row-reverse message px-4 py-2`}>
+    <div
+      key={id}
+      className={`${ai ? 'bg-[#eff6ff]' : ''} flex-row-reverse message px-2 py-1 md:px-4 md:py-2`}
+    >
       <div className="message__wrapper">
         <ReactMarkdown
-          className={'message__markdown text-left'}
+          className={'message__markdown text-left break-words text-xs md:text-sm'}
           remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
           components={{
             code({ node, inline, className, children, ...props }) {
@@ -103,8 +106,8 @@ const ChatMessage = (props) => {
 
       <div className="message__pic">
         <div className="avatar">
-          <div className="w-8 border rounded-full">
-            {ai ? <img width="30" src={logo} alt="Logo" /> : <img src={person} alt="profile pic" />}
+          <div className="w-6 border rounded-full md:w-8">
+            {ai ? <img width="25" src={logo} alt="Logo" /> : <img src={person} alt="profile pic" />}
           </div>
         </div>
       </div>

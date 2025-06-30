@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
-import { MdSend, MdStop } from 'react-icons/md';
+import { MdSend } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 const NewChatView = () => {
@@ -18,9 +18,6 @@ const NewChatView = () => {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [isRecipeFetchInProgress, setIsRecipeFetchInProgress] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-  const [hasStoppedGeneration, setHasStoppedGeneration] = useState(false);
-  const [isStoppingInProgress, setIsStoppingInProgress] = useState(false);
-  const [currentMessageId, setCurrentMessageId] = useState(null);
 
   // Function to clean text formatting
   const cleanText = (text) => {
@@ -35,7 +32,9 @@ const NewChatView = () => {
   // Scroll to bottom when messages change IF AUTO-SCROLL is enabled
   useEffect(() => {
     if (shouldAutoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
     }
   }, [messages, shouldAutoScroll]);
 
@@ -47,57 +46,10 @@ const NewChatView = () => {
     setShouldAutoScroll(isNearBottom);
   };
 
-  // Stop streaming - user forced stop - with reconnect approach
-  const handleStop = () => {
-    setIsStoppingInProgress(true);
-    console.log('Stop requested - attempting to halt stream');
-
-    if (socketRef.current) {
-      // Send stop signal with the messageId received from the server
-      socketRef.current.emit('stop_stream', { messageId: currentMessageId || currentAIMessageId });
-      console.log(
-        `Stop signal sent to server for message: ${currentMessageId || currentAIMessageId}`,
-      );
-    }
-
-    // Mark as stopped to block incoming messages
-    setHasStoppedGeneration(true);
-    setIsStreaming(false);
-    setCurrentAIMessageId(null);
-    setCurrentMessageId(null);
-    setIsFetchingRecipe(false);
-    setIsRecipeFetchInProgress(false);
-    setLoadingMessage('');
-
-    // Clean up message display
-    addMessage((prevMessages) => {
-      return prevMessages
-        .map((msg) => {
-          if (msg.id === currentAIMessageId && msg.ai && !msg.complete) {
-            // Mark message as complete when stopped, trim trailing newlines
-            return {
-              ...msg,
-              text: cleanText((msg.text || '').trim()) + '\n\n[Generation stopped by user]',
-              complete: true,
-              stopped: true,
-            };
-          }
-          return msg;
-        })
-        .filter((msg) => !msg.isLoading);
-    });
-
-    // Reset stopped state after a delay
-    setTimeout(() => {
-      setHasStoppedGeneration(false);
-      setIsStoppingInProgress(false);
-    }, 500);
-  };
-
   // Initialize socket connection once
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io('http://192.168.47.23:5000', {
+      socketRef.current = io('http://192.168.1.203:5000', {
         transports: ['websocket', 'polling'],
       });
 
@@ -168,30 +120,6 @@ const NewChatView = () => {
 
     const handleResponse = (data) => {
       console.log('Received response:', data);
-
-      // Track messageId from the server
-      if (data.messageId && !currentMessageId) {
-        setCurrentMessageId(data.messageId);
-      }
-
-      // Server acknowledged our stop request
-      if (data.stopped) {
-        setIsStreaming(false);
-        setIsStoppingInProgress(false);
-        return;
-      }
-
-      // Block all incoming messages if we're in the process of stopping
-      if (isStoppingInProgress) {
-        console.log('Ignoring data - stop in progress');
-        return;
-      }
-
-      // Ignore incoming data if stop was pressed
-      if (hasStoppedGeneration) {
-        console.log('Ignoring incoming data after stop');
-        return;
-      }
 
       if (data.error) {
         console.error('Socket error:', data.error);
@@ -274,31 +202,13 @@ const NewChatView = () => {
     socket.on('response', handleResponse);
     socket.on('recipe_stream', handleResponse);
 
-    // Listen for stop_acknowledged from server
-    socket.on('stop_acknowledged', (data) => {
-      console.log('Stop acknowledged by server:', data);
-      // Server confirmed it stopped generation
-      setIsStreaming(false);
-      setCurrentAIMessageId(null);
-      setCurrentMessageId(null);
-      setIsStoppingInProgress(false);
-    });
-
     return () => {
       if (socket) {
         socket.off('response', handleResponse);
         socket.off('recipe_stream', handleResponse);
-        socket.off('stop_acknowledged');
       }
     };
-  }, [
-    currentAIMessageId,
-    currentMessageId,
-    loadingMessage,
-    addMessage,
-    hasStoppedGeneration,
-    isStoppingInProgress,
-  ]);
+  }, [currentAIMessageId, loadingMessage, addMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -351,22 +261,46 @@ const NewChatView = () => {
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 min-h-[calc(100vh-2rem)] flex flex-col max-w-3xl mx-auto">
-      <main className="flex-grow overflow-y-auto space-y-4 mb-4" onScroll={handleScroll}>
-        {messages.map((message) => (
-          <ChatMessage key={message.id} message={message} />
-        ))}
-        <span ref={messagesEndRef}></span>
+    <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl shadow-none sm:shadow-lg flex flex-col w-full max-w-3xl mx-auto min-h-[100svh] min-h-dvh box-border p-1 sm:p-2">
+      <main
+        className="flex-grow overflow-y-auto space-y-2 sm:space-y-4 mb-2 sm:mb-4 w-full px-1 sm:px-2 pt-1"
+        onScroll={handleScroll}
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          minWidth: 0,
+          overscrollBehavior: 'contain',
+        }}
+      >
+        <div className="flex flex-col w-full max-w-full">
+          {messages.map((message) => (
+            <ChatMessage key={message.id} message={message} />
+          ))}
+          <span ref={messagesEndRef}></span>
+        </div>
       </main>
 
       <form
         onSubmit={handleSubmit}
-        className="sticky bottom-0 bg-white dark:bg-gray-800 pt-4 border-t border-gray-200 dark:border-gray-700"
+        className="sticky bottom-0 left-0 right-0 bg-white dark:bg-gray-800 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 z-10 pb-2"
+        style={{
+          width: '100%',
+          maxWidth: '100vw',
+        }}
       >
-        <div className="flex items-stretch bg-gray-50 dark:bg-gray-700 rounded-xl overflow-hidden">
+        <div
+          className="flex items-end bg-gray-50 dark:bg-gray-700 rounded-t-xl rounded-b-[1.1em] sm:rounded-xl w-full gap-1.5 sm:gap-3 px-1 xs:px-1 sm:px-2 py-1 xs:py-0.5 sm:py-1 transition-[padding] duration-200"
+          style={{
+            minHeight: '3rem',
+            boxSizing: 'border-box',
+            width: '100%',
+            maxWidth: '100%',
+            flex: 1,
+            alignItems: 'flex-end',
+          }}
+        >
           <textarea
             ref={inputRef}
-            className="w-full p-3 bg-transparent text-gray-800 dark:text-gray-200 outline-none resize-none max-h-32"
+            className="flex-grow min-w-0 w-full px-1 py-1 xs:py-1.5 sm:py-2 bg-transparent text-gray-800 dark:text-gray-200 focus:bg-white/80 dark:focus:bg-gray-600/80 outline-none resize-none max-h-40 text-base xs:text-sm sm:text-base leading-relaxed rounded-md transition-[background] transition-colors duration-200 border border-transparent focus:border-blue-300 dark:focus:border-blue-800"
             rows={1}
             value={formValue}
             onKeyDown={handleKeyDown}
@@ -379,36 +313,34 @@ const NewChatView = () => {
                 : 'Ask a question'
             }
             disabled={isStreaming}
+            style={{
+              fontFamily: 'inherit',
+              marginBottom: 0,
+              boxSizing: 'border-box',
+              minHeight: '2.5rem',
+              maxHeight: '8rem',
+              resize: 'none',
+              width: '100%',
+            }}
           />
-          {!isStreaming ? (
-            <button
-              type="submit"
-              className={`p-3 ${
-                formValue
-                  ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
-                  : 'text-gray-400'
-              } transition-colors`}
-              disabled={!formValue || isStoppingInProgress}
-            >
-              <MdSend size={24} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`p-3 flex items-center justify-center rounded-r ${
-                isStoppingInProgress ? 'bg-gray-500' : 'bg-red-500 hover:bg-red-600'
-              } text-white transition-colors`}
-              onClick={handleStop}
-              disabled={isStoppingInProgress}
-              title={isStoppingInProgress ? 'Stopping...' : 'Stop Generating'}
-            >
-              {isStoppingInProgress ? (
-                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-              ) : (
-                <MdStop size={24} />
-              )}
-            </button>
-          )}
+          <button
+            type="submit"
+            className={`flex-shrink-0 px-3 xs:px-3 sm:px-3 py-2 xs:py-2.5 sm:py-3 ${
+              formValue ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900' : 'text-gray-400'
+            } transition-colors rounded-lg sm:rounded-xl`}
+            disabled={!formValue}
+            aria-label="Send"
+            tabIndex={isStreaming ? -1 : 0}
+            style={{
+              minHeight: '2.75rem',
+              minWidth: '2.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <MdSend size={24} />
+          </button>
         </div>
       </form>
     </div>

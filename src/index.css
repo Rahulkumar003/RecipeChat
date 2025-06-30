@@ -114,11 +114,11 @@
 
   /* ChatMessage */
   .message {
-    @apply py-5 gap-2 flex items-start justify-end;
+    @apply py-2 gap-1 flex items-start justify-end md:justify-end sm:justify-center;
   }
 
   .message__wrapper {
-    @apply flex-grow w-screen flex-wrap overflow-hidden;
+    @apply flex-grow w-full flex-wrap overflow-hidden;
   }
 
   .message__markdown {
@@ -223,7 +223,7 @@
   }
 
   .message__createdAt {
-    font-size: 10px;
+    font-size: 8px;
     @apply font-thin italic text-slate-600 dark:text-slate-300;
   }
 
