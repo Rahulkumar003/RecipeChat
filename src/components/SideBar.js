@@ -9,7 +9,13 @@ const SideBar = ({ isOpen, setIsOpen, isMobile }) => {
   const [, , clearMessages] = useContext(ChatContext);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const clearChat = () => clearMessages();
+  const clearChat = () => {
+    clearMessages();
+    // Close sidebar on mobile after starting new chat for better UX
+    if (isMobile) {
+      setIsOpen(false);
+    }
+  };
 
   // Toggle sidebar
   const toggleSidebar = () => {

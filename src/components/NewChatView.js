@@ -70,7 +70,60 @@ const NewChatView = () => {
     };
   }, []);
 
-  // Add initial welcome message on component mount (only once)
+  // Check if we already have recipe data in the conversation to set initial state correctly
+  useEffect(() => {
+    // Check if there are messages that indicate a recipe has already been fetched
+    const hasRecipeContent = messages.some(
+      (msg) =>
+        msg.ai &&
+        (msg.text.includes('**Title**') ||
+          msg.text.includes('**Ingredients**') ||
+          msg.text.includes('**Procedure**') ||
+          msg.text.includes('Recipe Assistant')),
+    );
+
+    if (hasRecipeContent) {
+      setIsFetchingRecipe(false);
+    }
+
+    // Check if we have a message that was recovered from incomplete state
+    const hasRecoveredMessage = messages.some((msg) => msg.wasIncompleteOnReload);
+    if (hasRecoveredMessage) {
+      // Reset streaming states to prevent continuation issues
+      setIsStreaming(false);
+      setCurrentAIMessageId(null);
+      setLoadingMessage('');
+      setIsRecipeFetchInProgress(false);
+
+      // Remove the flag after handling to prevent repeated resets
+      setTimeout(() => {
+        addMessage((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.wasIncompleteOnReload ? { ...msg, wasIncompleteOnReload: undefined } : msg,
+          ),
+        );
+      }, 100);
+    }
+  }, [messages, addMessage]);
+
+  // Reset all state when messages are cleared (New Chat functionality)
+  useEffect(() => {
+    // If messages array becomes empty or only has welcome message, reset all state
+    if (
+      messages.length === 0 ||
+      (messages.length === 1 && messages[0].text?.includes('Welcome to ChatRecipe'))
+    ) {
+      setIsFetchingRecipe(true);
+      setIsStreaming(false);
+      setCurrentAIMessageId(null);
+      setLoadingMessage('');
+      setIsRecipeFetchInProgress(false);
+      setFormValue('');
+      setShouldAutoScroll(true);
+    }
+  }, [messages]);
+
+  // Add initial welcome message on component mount (only if no messages exist)
   useEffect(() => {
     const welcomeMessage = {
       id: `msg_welcome_${Date.now()}`,
@@ -261,7 +314,7 @@ const NewChatView = () => {
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl shadow-none sm:shadow-lg flex flex-col w-full max-w-3xl mx-auto min-h-[100svh] min-h-dvh box-border p-1 sm:p-2">
+    <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl shadow-none sm:shadow-lg flex flex-col w-full max-w-3xl mx-auto h-full box-border p-1 sm:p-2">
       <main
         className="flex-grow overflow-y-auto space-y-2 sm:space-y-4 mb-2 sm:mb-4 w-full px-1 sm:px-2 pt-1"
         onScroll={handleScroll}

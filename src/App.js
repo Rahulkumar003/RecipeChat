@@ -41,11 +41,11 @@ const App = () => {
 
           {/* Main content */}
           <main
-            className={`flex-1 transition-all duration-300 w-full ${
+            className={`flex-1 transition-all duration-300 w-full h-screen ${
               isMobile ? 'ml-0' : isSidebarOpen ? 'md:ml-64 lg:ml-72' : 'md:ml-16'
             }`}
           >
-            <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-8">
+            <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-8 h-full">
               <Routes>
                 <Route path="/" element={<NewChatView />} />
                 <Route path="/:videoUrl" element={<NewChatView />} />
