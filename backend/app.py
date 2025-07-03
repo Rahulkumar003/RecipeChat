@@ -116,6 +116,17 @@ def fetch_recipe_stream(data):
     # Return the message ID to the client immediately
     emit('recipe_stream', {"messageId": message_id, "status": "started"})
 
+@socketio.on('reset_conversation')
+def reset_conversation():
+    """Reset the conversation history for new chat sessions"""
+    try:
+        chatbot.reset_conversation()
+        print("Conversation history reset")
+        # Don't emit a response for this event as it's not needed
+    except Exception as e:
+        print(f"Error resetting conversation: {str(e)}")
+        # Don't emit error response to avoid server issues
+
 if __name__ == '__main__':
     # Bind to all network interfaces
     socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

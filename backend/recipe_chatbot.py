@@ -26,6 +26,8 @@ import re
 import os
 from dotenv import load_dotenv
 from together import Together
+import time
+import random
 
 # Suppress warnings and logging  cleaner output
 warnings.filterwarnings("ignore")
@@ -88,87 +90,99 @@ def clean_subtitle_text(subtitle_data):
 
     return full_text
 
-def get_youtube_subtitles(url, lang='en'):
+def get_youtube_subtitles(url, lang='en', retry_count=3, backoff_factor=1):
     """
     Fetch YouTube subtitles as a clean, formatted string
     
     Args:
         url (str): YouTube video URL
         lang (str): Language code for subtitles (default: 'en')
+        retry_count (int): Number of retries (default: 3)
+        backoff_factor (int): Exponential backoff factor (default: 1)
     
     Returns:
         dict: A dictionary containing subtitle information
     """
-    try:
-        # Extract the video ID from different YouTube URL formats
-        video_id = None
-        if "v=" in url:
-            video_id = url.split("v=")[1].split("&")[0]
-        elif "youtu.be/" in url:
-            video_id = url.split("youtu.be/")[1].split("?")[0]
-        elif "embed/" in url:
-            video_id = url.split("embed/")[1].split("?")[0]
-
-        if not video_id:
-            raise ValueError("Could not extract video ID from URL")
-
-        # Preferred languages for manual and auto transcripts
-        manual_priority = ['en', 'hi']
-        auto_priority = ['en', 'hi']
-
-        # 1. Try manual transcripts
+    attempt = 0
+    delay = 1
+    while attempt < retry_count:
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            # Extract the video ID from different YouTube URL formats
+            video_id = None
+            if "v=" in url:
+                video_id = url.split("v=")[1].split("&")[0]
+            elif "youtu.be/" in url:
+                video_id = url.split("youtu.be/")[1].split("?")[0]
+            elif "embed/" in url:
+                video_id = url.split("embed/")[1].split("?")[0]
+
+            if not video_id:
+                raise ValueError("Could not extract video ID from URL")
+
+            # Preferred languages for manual and auto transcripts
+            manual_priority = ['en', 'hi']
+            auto_priority = ['en', 'hi']
+
+            # 1. Try manual transcripts
             try:
-                transcript = transcript_list.find_manually_created_transcript(manual_priority)
-                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
-                full_text = clean_subtitle_text(transcript_data)
-                if full_text and len(full_text) > 10:
-                    return {
-                        'full_text': full_text,
-                        'languages': [transcript.language_code],
-                        'type': 'manual'
-                    }
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                try:
+                    transcript = transcript_list.find_manually_created_transcript(manual_priority)
+                    transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                    full_text = clean_subtitle_text(transcript_data)
+                    if full_text and len(full_text) > 10:
+                        return {
+                            'full_text': full_text,
+                            'languages': [transcript.language_code],
+                            'type': 'manual'
+                        }
+                except Exception as e:
+                    pass
+                # 2. Try auto-generated transcripts
+                try:
+                    transcript = transcript_list.find_generated_transcript(auto_priority)
+                    transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                    full_text = clean_subtitle_text(transcript_data)
+                    if full_text and len(full_text) > 10:
+                        return {
+                            'full_text': full_text,
+                            'languages': [transcript.language_code],
+                            'type': 'auto-generated'
+                        }
+                except Exception as e:
+                    pass
+                # 3. Try any transcript that script API can fetch
+                try:
+                    transcript = transcript_list.find_transcript(transcript_list._langs)
+                    transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
+                    full_text = clean_subtitle_text(transcript_data)
+                    if full_text and len(full_text) > 10:
+                        return {
+                            'full_text': full_text,
+                            'languages': [transcript.language_code],
+                            'type': 'fallback-any-transcript'
+                        }
+                except Exception as e:
+                    pass
+                # If nothing worked, return available langs
+                available_languages = [(tr.language_code, 'auto' if tr.is_generated else 'manual') for tr in
+                                       transcript_list]
+                raise Exception(f"Could not fetch transcript. Available: {available_languages}")
             except Exception as e:
-                pass
-            # 2. Try auto-generated transcripts
-            try:
-                transcript = transcript_list.find_generated_transcript(auto_priority)
-                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
-                full_text = clean_subtitle_text(transcript_data)
-                if full_text and len(full_text) > 10:
-                    return {
-                        'full_text': full_text,
-                        'languages': [transcript.language_code],
-                        'type': 'auto-generated'
-                    }
-            except Exception as e:
-                pass
-            # 3. Try any transcript that script API can fetch
-            try:
-                transcript = transcript_list.find_transcript(transcript_list._langs)
-                transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=[transcript.language_code])
-                full_text = clean_subtitle_text(transcript_data)
-                if full_text and len(full_text) > 10:
-                    return {
-                        'full_text': full_text,
-                        'languages': [transcript.language_code],
-                        'type': 'fallback-any-transcript'
-                    }
-            except Exception as e:
-                pass
-            # If nothing worked, return available langs
-            available_languages = [(tr.language_code, 'auto' if tr.is_generated else 'manual') for tr in
-                                   transcript_list]
-            raise Exception(f"Could not fetch transcript. Available: {available_languages}")
+                raise e
         except Exception as e:
-            raise e
-    except Exception as e:
-        return {
-            'full_text': '',
-            'languages': [],
-            'error': str(e)
-        }
+            attempt += 1
+            if attempt < retry_count:
+                delay *= backoff_factor
+                delay_with_jitter = delay * (1 + random.uniform(0, 0.1))
+                print(f"Error fetching subtitles: {e}. Retrying in {delay_with_jitter} seconds...")
+                time.sleep(delay_with_jitter)
+            else:
+                return {
+                    'full_text': '',
+                    'languages': [],
+                    'error': str(e)
+                }
 
 # Step 2: Recipe Extraction Prompt
 EXTRACTION_PROMPT = """
@@ -201,7 +215,8 @@ def query_llm(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
     try:
         response = together_client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1500  # Add max_tokens to prevent exceeding limits
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -212,7 +227,8 @@ async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turb
         stream = together_client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            stream=True
+            stream=True,
+            max_tokens=1500  # Add max_tokens to prevent exceeding limits
         )
         
         full_response = ""
@@ -298,25 +314,51 @@ class RecipeChatBot:
         if not self.recipe_data:
             yield "Please fetch a recipe first by providing a video URL."
             return
+        
+        # Improved conversation history management
         history_context = ""
         if self.conversation_history:
-            history_context = "Conversation History:\n"
-            for turn in self.conversation_history[-3:]:  # Limit to last 3 turns to prevent prompt overflow
+            # Limit to last 2 turns to prevent token overflow
+            recent_history = self.conversation_history[-2:]
+            history_context = "Recent Conversation:\n"
+            for turn in recent_history:
                 role = "User" if turn["role"] == "user" else "Assistant"
-                history_context += f"{role}: {turn['content']}\n"
+                # Truncate long responses to prevent token overflow
+                content = turn['content']
+                if len(content) > 300:
+                    content = content[:300] + "..."
+                history_context += f"{role}: {content}\n"
             history_context += "\n"
+        
+        # Truncate recipe data if it's too long
+        recipe_data = self.recipe_data
+        if len(recipe_data) > 2000:
+            recipe_data = recipe_data[:2000] + "..."
+        
         # Always use GENERAL_PROMPT
         prompt = GENERAL_PROMPT.format(
-            recipe_data=self.recipe_data,
+            recipe_data=recipe_data,
             user_question=f"{history_context}Current Question: {question}"
         )
+        
         full_response = ""
-        async for chunk in query_llm_stream(prompt, model=self.model):
-            full_response += chunk
-            yield chunk
-        self.conversation_history.append({"role": "user", "content": question})
-        self.conversation_history.append({"role": "assistant", "content": full_response})
-
+        try:
+            async for chunk in query_llm_stream(prompt, model=self.model):
+                full_response += chunk
+                yield chunk
+            
+            # Only add to history if we got a successful response
+            if full_response and not full_response.startswith("Error querying LLM"):
+                self.conversation_history.append({"role": "user", "content": question})
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+                
+                # Keep only last 6 turns (3 user + 3 assistant) to prevent   memory buildup
+                if len(self.conversation_history) > 6:
+                    self.conversation_history = self.conversation_history[-6:]
+        
+        except Exception as e:
+            error_msg = f"Error in conversation: {str(e)}"
+            yield error_msg
 
     def display_conversation(self):
         """
@@ -325,6 +367,12 @@ class RecipeChatBot:
         for turn in self.conversation_history:
             role = turn["role"].capitalize()
             print(f"{role}: {turn['content']}")
+
+    def reset_conversation(self):
+        """
+        Reset conversation history for new chats.
+        """
+        self.conversation_history = []
 
 async def handle_user_question(user_question):
     async for chunk in bot.ask_question_stream(user_question):
@@ -353,5 +401,9 @@ if __name__ == "__main__":
         if user_question.lower() == "exit":
             print("Thank you for using the Recipe ChatBot! Goodbye.")
             break
+        elif user_question.lower() == "new chat":
+            bot.reset_conversation()
+            print("Conversation history reset. Please start a new conversation.")
+            continue
 
         asyncio.run(handle_user_question(user_question))

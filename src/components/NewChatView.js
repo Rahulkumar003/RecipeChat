@@ -18,6 +18,9 @@ const NewChatView = () => {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [isRecipeFetchInProgress, setIsRecipeFetchInProgress] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isNewChatInitiated, setIsNewChatInitiated] = useState(false);
+  const [hasVideoUrlError, setHasVideoUrlError] = useState(false);
+  const [processedVideoUrl, setProcessedVideoUrl] = useState(null); // Track processed URLs
 
   // Function to clean text formatting
   const cleanText = (text) => {
@@ -82,6 +85,7 @@ const NewChatView = () => {
           msg.text.includes('Recipe Assistant')),
     );
 
+    // Only set isFetchingRecipe to false if we have actual recipe content, not just error messages
     if (hasRecipeContent) {
       setIsFetchingRecipe(false);
     }
@@ -104,7 +108,7 @@ const NewChatView = () => {
         );
       }, 100);
     }
-  }, [messages, addMessage]);
+  }, [messages]);
 
   // Reset all state when messages are cleared (New Chat functionality)
   useEffect(() => {
@@ -120,6 +124,8 @@ const NewChatView = () => {
       setIsRecipeFetchInProgress(false);
       setFormValue('');
       setShouldAutoScroll(true);
+      setIsNewChatInitiated(true);
+      setHasVideoUrlError(false);
     }
   }, [messages]);
 
@@ -133,12 +139,20 @@ const NewChatView = () => {
     };
 
     addMessage((prevMessages) => (prevMessages.length === 0 ? [welcomeMessage] : prevMessages));
-  }, [addMessage]);
+  }, []);
 
   // Auto-fetch recipe if video URL is in route params
   useEffect(() => {
-    if (videoUrl && messages.length <= 1 && !isRecipeFetchInProgress && socketRef.current) {
-      // Only auto-fetch if no conversation has started
+    if (
+      videoUrl &&
+      messages.length <= 1 &&
+      !isRecipeFetchInProgress &&
+      !isStreaming &&
+      socketRef.current &&
+      !isNewChatInitiated
+    ) {
+      // Auto-fetch recipe for video URL
+      console.log(`Auto-fetching recipe for URL: ${videoUrl}`);
       setIsRecipeFetchInProgress(true);
       const decodedUrl = decodeURIComponent(videoUrl);
 
@@ -164,8 +178,32 @@ const NewChatView = () => {
       setLoadingMessage(loadingMessageId);
 
       socketRef.current.emit('fetch_recipe_stream', { video_url: decodedUrl });
+      setProcessedVideoUrl(videoUrl);
     }
-  }, [videoUrl, messages.length, addMessage, isRecipeFetchInProgress]);
+  }, [videoUrl, messages.length, isRecipeFetchInProgress, isStreaming, isNewChatInitiated]);
+
+  // Reset states when video URL changes
+  useEffect(() => {
+    if (videoUrl && processedVideoUrl !== videoUrl) {
+      console.log(`Video URL changed to: ${videoUrl}, resetting states`);
+      setIsNewChatInitiated(false);
+      setIsFetchingRecipe(true);
+      setIsStreaming(false);
+      setCurrentAIMessageId(null);
+      setLoadingMessage('');
+      setIsRecipeFetchInProgress(false);
+      setHasVideoUrlError(false);
+      setProcessedVideoUrl(videoUrl);
+    }
+
+    // Handle navigation to home page
+    if (!videoUrl && processedVideoUrl) {
+      console.log('Navigated to home page, resetting states');
+      setProcessedVideoUrl(null);
+      setIsFetchingRecipe(true);
+      setHasVideoUrlError(false);
+    }
+  }, [videoUrl, processedVideoUrl]);
 
   // Enhanced socket event listener
   useEffect(() => {
@@ -191,7 +229,28 @@ const NewChatView = () => {
         });
         setIsStreaming(false);
         setCurrentAIMessageId(null);
-        setIsFetchingRecipe(false);
+
+        // Keep isFetchingRecipe as true if it's a video URL error to continue expecting video URL
+        const errorMessage = data.error.toLowerCase();
+        const isVideoUrlError =
+          errorMessage.includes('video') ||
+          errorMessage.includes('url') ||
+          errorMessage.includes('extract') ||
+          errorMessage.includes('id') ||
+          errorMessage.includes('transcript');
+
+        console.log('Error message:', data.error);
+        console.log('Is video URL error:', isVideoUrlError);
+
+        if (!isVideoUrlError) {
+          setIsFetchingRecipe(false);
+          setHasVideoUrlError(false);
+        } else {
+          // Ensure we're in recipe-fetching mode for video URL errors
+          setIsFetchingRecipe(true);
+          setHasVideoUrlError(true);
+          console.log('Keeping in recipe-fetching mode due to video URL error');
+        }
         setIsRecipeFetchInProgress(false);
       } else if (data.complete) {
         // Clear loading message and clean final text
@@ -199,9 +258,23 @@ const NewChatView = () => {
           return prevMessages
             .map((msg) => {
               if (msg.id === currentAIMessageId) {
+                const finalText = cleanText(msg.text || '');
+
+                // Check if the completed message is an error
+                const isCompletedError =
+                  finalText.toLowerCase().includes('transcript extraction failed') ||
+                  finalText.toLowerCase().includes('could not extract video id') ||
+                  finalText.toLowerCase().includes('video id not present') ||
+                  finalText.toLowerCase().includes('invalid url');
+
+                if (isCompletedError) {
+                  console.log('Completed message is an error, maintaining recipe-fetching mode');
+                  // Don't change isFetchingRecipe here, let the streaming handler manage it
+                }
+
                 return {
                   ...msg,
-                  text: cleanText(msg.text || ''),
+                  text: finalText,
                   complete: true,
                 };
               }
@@ -212,7 +285,12 @@ const NewChatView = () => {
         setLoadingMessage('');
         setIsStreaming(false);
         setCurrentAIMessageId(null);
-        setIsFetchingRecipe(false);
+
+        // Only set isFetchingRecipe to false if it's not a video URL error
+        if (!hasVideoUrlError) {
+          setIsFetchingRecipe(false);
+          setHasVideoUrlError(false);
+        }
         setIsRecipeFetchInProgress(false);
       } else if (data.streaming) {
         // Clear loading message on first streaming data
@@ -221,6 +299,22 @@ const NewChatView = () => {
             return prevMessages.filter((msg) => !msg.isLoading);
           });
           setLoadingMessage('');
+        }
+
+        // Check if the streaming data contains an error message
+        const isErrorInStream =
+          data.data &&
+          (data.data.toLowerCase().includes('transcript extraction failed') ||
+            data.data.toLowerCase().includes('could not extract video id') ||
+            data.data.toLowerCase().includes('video id not present') ||
+            data.data.toLowerCase().includes('invalid url'));
+
+        if (isErrorInStream) {
+          console.log('Error detected in streaming data:', data.data);
+          // Keep in recipe-fetching mode for video URL errors
+          setIsFetchingRecipe(true);
+          setHasVideoUrlError(true);
+          console.log('Keeping in recipe-fetching mode due to video URL error in stream');
         }
 
         addMessage((prevMessages) => {
@@ -261,7 +355,7 @@ const NewChatView = () => {
         socket.off('recipe_stream', handleResponse);
       }
     };
-  }, [currentAIMessageId, loadingMessage, addMessage]);
+  }, [currentAIMessageId, loadingMessage, addMessage, hasVideoUrlError]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -296,6 +390,9 @@ const NewChatView = () => {
     if (isFetchingRecipe && !isRecipeFetchInProgress) {
       setIsRecipeFetchInProgress(true);
       socketRef.current.emit('fetch_recipe_stream', { video_url: cleanInput });
+      // Reset video URL error state when submitting a new URL
+      setHasVideoUrlError(false);
+      setProcessedVideoUrl(cleanInput);
     } else {
       socketRef.current.emit('generate_text', { prompt: cleanInput });
     }
@@ -362,7 +459,9 @@ const NewChatView = () => {
               isStreaming
                 ? 'Answer is being generated...'
                 : isFetchingRecipe
-                ? 'Enter YouTube video URL'
+                ? hasVideoUrlError
+                  ? 'Invalid YouTube URL. Please provide a valid one.'
+                  : 'Enter YouTube video URL'
                 : 'Ask a question'
             }
             disabled={isStreaming}

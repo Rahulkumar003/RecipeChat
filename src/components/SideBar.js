@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MdChevronLeft, MdChevronRight, MdAdd, MdOutlineSettings } from 'react-icons/md';
 import { ChatContext } from '../context/chatContext';
 import logo from '../assets/logo.png';
@@ -8,9 +9,11 @@ import Setting from './Setting';
 const SideBar = ({ isOpen, setIsOpen, isMobile }) => {
   const [, , clearMessages] = useContext(ChatContext);
   const [modalOpen, setModalOpen] = useState(false);
+  const navigate = useNavigate();
 
   const clearChat = () => {
     clearMessages();
+    navigate('/');
     // Close sidebar on mobile after starting new chat for better UX
     if (isMobile) {
       setIsOpen(false);
