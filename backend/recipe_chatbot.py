@@ -222,7 +222,7 @@ def query_llm(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
     except Exception as e:
         return f"Error querying LLM: {e}"
 
-async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", websocket=None):
+async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", websocket=None, stop_callback=None):
     try:
         stream = together_client.chat.completions.create(
             model=model,
@@ -233,6 +233,9 @@ async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turb
         
         full_response = ""
         for chunk in stream:
+            if stop_callback and stop_callback():
+                print("Stream stopped by callback")
+                break
             chunk_text = chunk.choices[0].delta.content or ""
             full_response += chunk_text
             yield chunk_text
@@ -241,10 +244,10 @@ async def query_llm_stream(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turb
         error_msg = f"Error querying LLM: {e}"
         yield error_msg
 
-async def extract_recipe(transcript):
+async def extract_recipe(transcript, stop_callback=None):
     prompt = EXTRACTION_PROMPT.format(transcript=transcript)
     full_response = ""
-    async for chunk in query_llm_stream(prompt):
+    async for chunk in query_llm_stream(prompt, stop_callback=stop_callback):
         full_response += chunk
     
     yield full_response
@@ -256,7 +259,7 @@ class RecipeChatBot:
         self.recipe_data = None
         self.conversation_history = []
 
-    async def fetch_recipe(self, video_url):
+    async def fetch_recipe(self, video_url, stop_callback=None):
         """
         Extract and process recipe details from a YouTube video.
         """
@@ -279,7 +282,9 @@ class RecipeChatBot:
 
             print("Extracting recipe...")
             full_response = ""
-            async for chunk in extract_recipe(transcript_text):
+            async for chunk in extract_recipe(transcript_text, stop_callback=stop_callback):
+                if stop_callback and stop_callback():
+                    break
                 full_response += chunk
                 yield chunk
 
@@ -307,7 +312,7 @@ class RecipeChatBot:
         return f"{introduction}\n\n{self.recipe_data}\n\nFeel free to ask me any questions about the recipe!"
 
 
-    async def ask_question_stream(self, question):
+    async def ask_question_stream(self, question, stop_callback=None):
         """
         Asynchronous method to generate a streaming response to the user's question (always uses the general prompt).
         """
@@ -343,7 +348,7 @@ class RecipeChatBot:
         
         full_response = ""
         try:
-            async for chunk in query_llm_stream(prompt, model=self.model):
+            async for chunk in query_llm_stream(prompt, model=self.model, stop_callback=stop_callback):
                 full_response += chunk
                 yield chunk
             
@@ -374,12 +379,12 @@ class RecipeChatBot:
         """
         self.conversation_history = []
 
-async def handle_user_question(user_question):
-    async for chunk in bot.ask_question_stream(user_question):
+async def handle_user_question(user_question, stop_callback=None):
+    async for chunk in bot.ask_question_stream(user_question, stop_callback=stop_callback):
         print(chunk, end='', flush=True)
 
-async def handle_recipe_genrate(url):
-    async for chunk in bot.fetch_recipe(url):
+async def handle_recipe_genrate(url, stop_callback=None):
+    async for chunk in bot.fetch_recipe(url, stop_callback=stop_callback):
         print(chunk,end='',flush=True)
 # Main Script
 if __name__ == "__main__":

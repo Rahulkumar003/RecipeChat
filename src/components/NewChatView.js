@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import { useParams } from 'react-router-dom';
 import ChatMessage from './ChatMessage';
 import { ChatContext } from '../context/chatContext';
-import { MdSend } from 'react-icons/md';
+import { MdSend, MdStop } from 'react-icons/md';
 import { io } from 'socket.io-client';
 
 const NewChatView = () => {
@@ -21,6 +21,7 @@ const NewChatView = () => {
   const [isNewChatInitiated, setIsNewChatInitiated] = useState(false);
   const [hasVideoUrlError, setHasVideoUrlError] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null); // Track processed URLs
+  const [isStoppingStream, setIsStoppingStream] = useState(false); // Track stop request
 
   // Function to clean text formatting
   const cleanText = (text) => {
@@ -52,12 +53,17 @@ const NewChatView = () => {
   // Initialize socket connection once
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io('http://192.168.1.203:5000', {
+      // Create a unique socket connection for this tab/window
+      const socketOptions = {
         transports: ['websocket', 'polling'],
-      });
+        forceNew: true, // Force a new connection for each tab
+        timeout: 5000,
+      };
+
+      socketRef.current = io('http://192.168.1.203:5000', socketOptions);
 
       socketRef.current.on('connect', () => {
-        console.log('Connected to backend');
+        console.log('Connected to backend from NewChatView with ID:', socketRef.current.id);
       });
 
       socketRef.current.on('connect_error', (error) => {
@@ -67,6 +73,7 @@ const NewChatView = () => {
 
     return () => {
       if (socketRef.current) {
+        console.log('Disconnecting socket from NewChatView');
         socketRef.current.disconnect();
         socketRef.current = null;
       }
@@ -211,6 +218,30 @@ const NewChatView = () => {
 
     const handleResponse = (data) => {
       console.log('Received response:', data);
+
+      if (data.stopped) {
+        // Stream was stopped by user
+        console.log('Stream stopped:', data.reason || 'user request');
+        setIsStreaming(false);
+        setCurrentAIMessageId(null);
+        setLoadingMessage('');
+        setIsRecipeFetchInProgress(false);
+        setIsStoppingStream(false);
+
+        // Add appropriate message based on stop reason
+        const stopMessage =
+          data.reason === 'new_session'
+            ? '⏸️ Stopped - new recipe started in another tab.'
+            : '⏹️ Response stopped by user.';
+
+        addMessage({
+          id: `msg_stopped_${Date.now()}`,
+          createdAt: Date.now(),
+          text: stopMessage,
+          ai: true,
+        });
+        return;
+      }
 
       if (data.error) {
         console.error('Socket error:', data.error);
@@ -398,12 +429,57 @@ const NewChatView = () => {
     }
   };
 
+  const handleStopStream = async () => {
+    setIsStoppingStream(true);
+    if (socketRef.current) {
+      socketRef.current.emit('stop_stream');
+    }
+    setIsStreaming(false);
+    setCurrentAIMessageId(null);
+    setLoadingMessage('');
+    setIsRecipeFetchInProgress(false);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!isStreaming) handleSubmit(e);
     }
   };
+
+  const stopCurrentStream = () => {
+    if (isStreaming && socketRef.current) {
+      socketRef.current.emit('stop_stream');
+      console.log('Stopping current stream due to state reset');
+    }
+    setIsStreaming(false);
+    setCurrentAIMessageId(null);
+    setLoadingMessage('');
+    setIsRecipeFetchInProgress(false);
+    setIsStoppingStream(false);
+  };
+
+  // Reset all state when messages are cleared (New Chat functionality)
+  useEffect(() => {
+    // If messages array becomes empty or only has welcome message, reset all state
+    if (
+      messages.length === 0 ||
+      (messages.length === 1 && messages[0].text?.includes('Welcome to ChatRecipe'))
+    ) {
+      // Stop any ongoing streams first
+      stopCurrentStream();
+
+      setIsFetchingRecipe(true);
+      setIsStreaming(false);
+      setCurrentAIMessageId(null);
+      setLoadingMessage('');
+      setIsRecipeFetchInProgress(false);
+      setFormValue('');
+      setShouldAutoScroll(true);
+      setIsNewChatInitiated(true);
+      setHasVideoUrlError(false);
+    }
+  }, [messages, isStreaming]);
 
   // Only scroll on initial load, not on every message change
   useEffect(() => {
@@ -475,24 +551,45 @@ const NewChatView = () => {
               width: '100%',
             }}
           />
-          <button
-            type="submit"
-            className={`flex-shrink-0 px-3 xs:px-3 sm:px-3 py-2 xs:py-2.5 sm:py-3 ${
-              formValue ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900' : 'text-gray-400'
-            } transition-colors rounded-lg sm:rounded-xl`}
-            disabled={!formValue}
-            aria-label="Send"
-            tabIndex={isStreaming ? -1 : 0}
-            style={{
-              minHeight: '2.75rem',
-              minWidth: '2.75rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <MdSend size={24} />
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              className={`flex-shrink-0 px-3 xs:px-3 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-white bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 transition-colors rounded-lg sm:rounded-xl shadow-md hover:shadow-lg`}
+              onClick={handleStopStream}
+              aria-label="Stop"
+              tabIndex={0}
+              style={{
+                minHeight: '2.75rem',
+                minWidth: '2.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MdStop size={24} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className={`flex-shrink-0 px-3 xs:px-3 sm:px-3 py-2 xs:py-2.5 sm:py-3 ${
+                formValue
+                  ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900'
+                  : 'text-gray-400'
+              } transition-colors rounded-lg sm:rounded-xl`}
+              disabled={!formValue}
+              aria-label="Send"
+              tabIndex={isStreaming ? -1 : 0}
+              style={{
+                minHeight: '2.75rem',
+                minWidth: '2.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MdSend size={24} />
+            </button>
+          )}
         </div>
       </form>
     </div>

@@ -40,12 +40,17 @@ const ChatContextProvider = (props) => {
   // Initialize socket connection
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io('http://192.168.1.203:5000', {
+      // Create a unique socket connection for this tab/window
+      const socketOptions = {
         transports: ['websocket', 'polling'],
-      });
+        forceNew: true, // Force a new connection for each tab
+        timeout: 5000,
+      };
+
+      socketRef.current = io('http://192.168.1.203:5000', socketOptions);
 
       socketRef.current.on('connect', () => {
-        console.log('Connected to backend from ChatContext');
+        console.log('Connected to backend from ChatContext with ID:', socketRef.current.id);
       });
 
       socketRef.current.on('connect_error', (error) => {
@@ -55,6 +60,7 @@ const ChatContextProvider = (props) => {
 
     return () => {
       if (socketRef.current) {
+        console.log('Disconnecting socket from ChatContext');
         socketRef.current.disconnect();
         socketRef.current = null;
       }
@@ -215,6 +221,12 @@ const ChatContextProvider = (props) => {
   };
 
   const clearMessages = () => {
+    // Stop any ongoing streams first
+    if (socketRef.current) {
+      socketRef.current.emit('stop_stream');
+      console.log('Stop stream sent before clearing messages');
+    }
+
     setMessages([]);
     const storageKey = getStorageKey();
     try {
